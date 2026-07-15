@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Gassy</title>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#FF6B35">
+
+<!-- iOS home screen support -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gassy">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>⛽ Gassy</h1>
+</header>
+
+<main>
+  <form id="entry-form" class="card">
+    <div class="field">
+      <label for="datetime">Date &amp; time</label>
+      <input type="datetime-local" id="datetime" name="datetime" required>
+    </div>
+
+    <div class="field">
+      <label for="mileage">Mileage (odometer)</label>
+      <input type="number" id="mileage" name="mileage" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 45210" required>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="pricePerGallon">Price / gallon</label>
+        <input type="number" id="pricePerGallon" name="pricePerGallon" inputmode="decimal" step="0.001" min="0" placeholder="3.499" required>
+      </div>
+
+      <div class="field">
+        <label for="totalCost">Total cost</label>
+        <input type="number" id="totalCost" name="totalCost" inputmode="decimal" step="0.01" min="0" placeholder="42.50" required>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="location">Location</label>
+      <div class="location-row">
+        <input type="text" id="location" name="location" placeholder="Locating…">
+        <button type="button" id="locate-btn" title="Refresh current location" aria-label="Refresh current location">📍</button>
+      </div>
+      <p id="location-status" class="hint"></p>
+    </div>
+
+    <button type="submit" class="primary-btn">Add fill-up</button>
+  </form>
+
+  <section class="log-section">
+    <div class="log-header">
+      <h2>Log</h2>
+      <button type="button" id="export-btn" class="link-btn">Export CSV</button>
+    </div>
+    <ul id="entries-list" class="entries"></ul>
+    <p id="empty-state" class="hint">No fill-ups logged yet.</p>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
