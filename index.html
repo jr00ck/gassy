@@ -26,6 +26,12 @@
 <main>
   <form id="entry-form" class="card">
     <div class="field">
+      <button type="button" id="import-photo-btn" class="secondary-btn">📷 Fill from photo</button>
+      <input type="file" id="photo-input" accept="image/*" hidden>
+      <p id="photo-status" class="hint"></p>
+    </div>
+
+    <div class="field">
       <label for="datetime">Date &amp; time</label>
       <input type="datetime-local" id="datetime" name="datetime" required>
     </div>
@@ -75,12 +81,12 @@
     </div>
     <details class="update-notes">
       <summary>What's new</summary>
-      <p>Fixes the Refresh button not applying updates on iOS, and adds this release notes preview.</p>
+      <p>Adds a "Fill from photo" button that reads the date and GPS location out of a picked photo's metadata to autofill the form. Also improves location accuracy to resolve the actual business name instead of just the street.</p>
     </details>
   </div>
 
   <footer class="app-footer">
-    <span class="app-footer-version">v1.2.0</span>
+    <span class="app-footer-version">v1.3.0</span>
   </footer>
 </main>
 
