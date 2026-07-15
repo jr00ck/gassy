@@ -19,8 +19,14 @@
 </head>
 <body>
 
+<div id="ptr-indicator" class="ptr-indicator"><div class="ptr-spinner"></div></div>
+
 <header class="topbar">
-  <h1>⛽ Gassy</h1>
+  <div class="topbar-row">
+    <h1>⛽ Gassy</h1>
+    <button type="button" id="updated-badge" class="updated-badge" hidden>✓ Updated</button>
+  </div>
+  <div id="whats-new" class="whats-new" hidden></div>
 </header>
 
 <main>
@@ -44,12 +50,12 @@
     <div class="row">
       <div class="field">
         <label for="pricePerGallon">Price / gallon</label>
-        <input type="number" id="pricePerGallon" name="pricePerGallon" inputmode="decimal" step="0.001" min="0" placeholder="3.499" required>
+        <input type="text" id="pricePerGallon" name="pricePerGallon" inputmode="numeric" placeholder="3.499" required>
       </div>
 
       <div class="field">
         <label for="totalCost">Total cost</label>
-        <input type="number" id="totalCost" name="totalCost" inputmode="decimal" step="0.01" min="0" placeholder="42.50" required>
+        <input type="text" id="totalCost" name="totalCost" inputmode="numeric" placeholder="42.50" required>
       </div>
     </div>
 
@@ -60,6 +66,7 @@
         <button type="button" id="locate-btn" title="Refresh current location" aria-label="Refresh current location">📍</button>
       </div>
       <p id="location-status" class="hint"></p>
+      <p id="location-address" class="hint"></p>
       <div id="nearby-stations" class="nearby-stations" hidden></div>
     </div>
 
@@ -75,19 +82,8 @@
     <p id="empty-state" class="hint">No fill-ups logged yet.</p>
   </section>
 
-  <div id="update-banner" class="update-banner" hidden>
-    <div class="update-banner-row">
-      <span>A new version is available</span>
-      <button type="button" id="update-refresh-btn">Refresh</button>
-    </div>
-    <details class="update-notes">
-      <summary>What's new</summary>
-      <p>Fixes gas station locations sometimes resolving to a nearby street or building name instead of the actual station — it now specifically looks up nearby fuel stations and picks the closest one, showing alternatives to tap if there's more than one nearby. Fill-up coordinates are now also included in CSV exports.</p>
-    </details>
-  </div>
-
   <footer class="app-footer">
-    <span class="app-footer-version">v1.4.0</span>
+    <span class="app-footer-version" id="app-version"></span>
   </footer>
 </main>
 

@@ -7,6 +7,7 @@ const priceInput = document.getElementById('pricePerGallon');
 const totalCostInput = document.getElementById('totalCost');
 const locationInput = document.getElementById('location');
 const locationStatus = document.getElementById('location-status');
+const locationAddress = document.getElementById('location-address');
 const locateBtn = document.getElementById('locate-btn');
 const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
@@ -15,6 +16,24 @@ const importPhotoBtn = document.getElementById('import-photo-btn');
 const photoInput = document.getElementById('photo-input');
 const photoStatus = document.getElementById('photo-status');
 const nearbyStationsEl = document.getElementById('nearby-stations');
+
+const STATE_ABBR = {
+  Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',
+  Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE', Florida: 'FL', Georgia: 'GA',
+  Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA',
+  Kansas: 'KS', Kentucky: 'KY', Louisiana: 'LA', Maine: 'ME', Maryland: 'MD',
+  Massachusetts: 'MA', Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS', Missouri: 'MO',
+  Montana: 'MT', Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+  'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', Ohio: 'OH',
+  Oklahoma: 'OK', Oregon: 'OR', Pennsylvania: 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+  'South Dakota': 'SD', Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT',
+  Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI', Wyoming: 'WY',
+  'District of Columbia': 'DC',
+};
+
+function abbrState(a) {
+  return a.state_code || STATE_ABBR[a.state] || a.state || '';
+}
 
 function loadEntries() {
   try {
@@ -51,6 +70,23 @@ function fmtMoney(n) {
   return '$' + Number(n).toFixed(2);
 }
 
+// Auto-decimal currency entry: digits shift in from the right (like a POS
+// terminal), so typing "3899" produces "3.899" without typing a period.
+function attachCurrencyInput(el, decimals) {
+  el.addEventListener('input', () => {
+    let digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    if (!digits) {
+      el.value = '';
+      return;
+    }
+    digits = digits.padStart(decimals + 1, '0');
+    const whole = digits.slice(0, -decimals);
+    const frac = digits.slice(-decimals);
+    el.value = `${parseInt(whole, 10)}.${frac}`;
+    el.setSelectionRange(el.value.length, el.value.length);
+  });
+}
+
 function distanceMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -80,6 +116,20 @@ async function findNearbyFuelStations(lat, lon) {
     .sort((a, b) => a.distance - b.distance);
 }
 
+async function fetchStreetAddress(lat, lon) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`
+    );
+    if (!res.ok) return '';
+    const data = await res.json();
+    const a = data.address || {};
+    return [a.house_number, a.road].filter(Boolean).join(' ');
+  } catch {
+    return '';
+  }
+}
+
 function renderNearbyStations(stations, cityState) {
   nearbyStationsEl.innerHTML = '';
   if (!stations.length) {
@@ -92,10 +142,11 @@ function renderNearbyStations(stations, cityState) {
     chip.type = 'button';
     chip.className = 'station-chip';
     chip.textContent = `${s.name} · ${fmtDistance(s.distance)}`;
-    chip.addEventListener('click', () => {
+    chip.addEventListener('click', async () => {
       locationInput.value = [s.name, cityState].filter(Boolean).join(', ');
       locationInput.dataset.lat = s.lat;
       locationInput.dataset.lon = s.lon;
+      locationAddress.textContent = await fetchStreetAddress(s.lat, s.lon);
     });
     nearbyStationsEl.appendChild(chip);
   });
@@ -105,6 +156,7 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
   locationInput.dataset.lat = latitude;
   locationInput.dataset.lon = longitude;
   renderNearbyStations([]);
+  locationAddress.textContent = '';
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
@@ -113,12 +165,13 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
     const data = await res.json();
     const a = data.address || {};
     const city = a.city || a.town || a.village || a.hamlet || '';
-    const state = a.state_code || a.state || '';
+    const state = abbrState(a);
     const cityState = [city, state].filter(Boolean).join(', ');
 
     if (a.amenity || a.shop) {
       // Reverse geocoding already matched a specific business — trust it.
       locationInput.value = [a.amenity || a.shop, cityState].filter(Boolean).join(', ');
+      locationAddress.textContent = [a.house_number, a.road].filter(Boolean).join(' ');
       locationStatus.textContent = foundLabel;
       return;
     }
@@ -132,6 +185,7 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
         locationInput.value = [best.name, cityState].filter(Boolean).join(', ');
         locationInput.dataset.lat = best.lat;
         locationInput.dataset.lon = best.lon;
+        locationAddress.textContent = await fetchStreetAddress(best.lat, best.lon);
         if (stations.length > 1) renderNearbyStations(stations, cityState);
         locationStatus.textContent = foundLabel;
         return;
@@ -343,6 +397,9 @@ entriesList.addEventListener('click', (e) => {
 
 locateBtn.addEventListener('click', locate);
 
+attachCurrencyInput(priceInput, 3);
+attachCurrencyInput(totalCostInput, 2);
+
 importPhotoBtn.addEventListener('click', () => photoInput.click());
 
 photoInput.addEventListener('change', async () => {
@@ -402,56 +459,113 @@ setDefaultDatetime();
 locate();
 render();
 
+// --- Version badge: shows briefly after an update was just applied ---
+
+const APP_VERSION = '1.5.0';
+const RELEASE_NOTES = 'Pull down from the top to check for updates (replaces the old auto-update banner). Prices now auto-format as you type — no need to type the decimal point. Gas station street addresses now show under the location field, and state names are abbreviated.';
+const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
+
+document.getElementById('app-version').textContent = `v${APP_VERSION}`;
+
+const updatedBadge = document.getElementById('updated-badge');
+const whatsNewEl = document.getElementById('whats-new');
+
+const lastSeenVersion = localStorage.getItem(LAST_SEEN_KEY);
+if (lastSeenVersion && lastSeenVersion !== APP_VERSION) {
+  updatedBadge.hidden = false;
+}
+localStorage.setItem(LAST_SEEN_KEY, APP_VERSION);
+
+updatedBadge.addEventListener('click', () => {
+  if (whatsNewEl.hidden) {
+    whatsNewEl.textContent = RELEASE_NOTES;
+    whatsNewEl.hidden = false;
+  } else {
+    whatsNewEl.hidden = true;
+  }
+});
+
+// --- Service worker: offline caching only. Updates are applied exclusively
+// via pull-to-refresh below, not automatically in the background. ---
+
 if ('serviceWorker' in navigator) {
-  const updateBanner = document.getElementById('update-banner');
-  const updateRefreshBtn = document.getElementById('update-refresh-btn');
-  let refreshing = false;
-  let currentReg = null;
-
-  function reloadOnce() {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  }
-
-  function watchForUpdate(reg) {
-    reg.addEventListener('updatefound', () => {
-      const newWorker = reg.installing;
-      if (!newWorker) return;
-      newWorker.addEventListener('statechange', () => {
-        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          updateBanner.hidden = false;
-        }
-      });
-    });
-  }
-
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then((reg) => {
-      currentReg = reg;
-      watchForUpdate(reg);
-      // Standalone iOS apps often resume from the background without a fresh
-      // page load, so proactively re-check whenever the app comes back to front.
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') reg.update().catch(() => {});
-      });
-    }).catch(() => {});
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   });
+}
 
-  updateRefreshBtn.addEventListener('click', () => {
-    updateRefreshBtn.disabled = true;
-    updateRefreshBtn.textContent = 'Refreshing…';
-    (currentReg
-      ? Promise.resolve(currentReg)
-      : navigator.serviceWorker.getRegistration()
-    ).then((reg) => {
-      const worker = reg && (reg.waiting || reg.installing);
-      if (worker) worker.postMessage('SKIP_WAITING');
-    });
-    // Safari on iOS doesn't always fire controllerchange in standalone mode,
-    // so force a reload shortly after regardless.
-    setTimeout(reloadOnce, 1200);
-  });
+// --- Pull-to-refresh: standard iOS gesture, checks for + applies an update ---
 
-  navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
+const ptrIndicator = document.getElementById('ptr-indicator');
+const PTR_THRESHOLD = 70;
+let ptrStartY = null;
+let ptrPulling = false;
+let ptrReady = false;
+let ptrRefreshing = false;
+
+document.addEventListener('touchstart', (e) => {
+  if (ptrRefreshing) return;
+  if (window.scrollY <= 0) {
+    ptrStartY = e.touches[0].clientY;
+    ptrPulling = true;
+  }
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (!ptrPulling || ptrStartY == null) return;
+  const delta = e.touches[0].clientY - ptrStartY;
+  if (delta > 0 && window.scrollY <= 0) {
+    e.preventDefault();
+    const pull = Math.min(delta, PTR_THRESHOLD * 1.5);
+    ptrReady = pull >= PTR_THRESHOLD;
+    ptrIndicator.classList.add('ptr-dragging');
+    ptrIndicator.style.transform = `translateY(${pull - 50}px)`;
+    ptrIndicator.style.opacity = String(Math.min(pull / PTR_THRESHOLD, 1));
+  } else {
+    ptrPulling = false;
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  if (!ptrPulling) return;
+  ptrPulling = false;
+  ptrIndicator.classList.remove('ptr-dragging');
+  if (ptrReady) {
+    triggerPullRefresh();
+  } else {
+    ptrIndicator.style.transform = '';
+    ptrIndicator.style.opacity = '';
+  }
+  ptrReady = false;
+});
+
+async function triggerPullRefresh() {
+  ptrRefreshing = true;
+  ptrIndicator.classList.add('ptr-spinning');
+  ptrIndicator.style.transform = 'translateY(20px)';
+  ptrIndicator.style.opacity = '1';
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        await reg.update();
+        const worker = reg.waiting || reg.installing;
+        if (worker) {
+          worker.postMessage('SKIP_WAITING');
+          await new Promise((resolve) => {
+            let done = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              done = true;
+              resolve();
+            }, { once: true });
+            setTimeout(() => { if (!done) resolve(); }, 1500);
+          });
+        }
+      }
+    }
+  } catch {
+    // Network or SW issue — fall through to a plain reload regardless.
+  }
+  window.location.reload();
 }
