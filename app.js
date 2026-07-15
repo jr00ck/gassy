@@ -5,6 +5,7 @@ const datetimeInput = document.getElementById('datetime');
 const mileageInput = document.getElementById('mileage');
 const priceInput = document.getElementById('pricePerGallon');
 const totalCostInput = document.getElementById('totalCost');
+const mpgPreview = document.getElementById('mpg-preview');
 const locationInput = document.getElementById('location');
 const locationStatus = document.getElementById('location-status');
 const locateBtn = document.getElementById('locate-btn');
@@ -382,22 +383,32 @@ function exifDateToInputValue(exifDate) {
   return `${y}-${mo}-${d}T${h}:${mi}`;
 }
 
+// Finds the most recent entry dated before the given datetime — i.e. the
+// prior fill-up an entry's MPG should be measured against. Always computed
+// on demand rather than stored, so it can never go stale when entries are
+// edited or deleted.
+function findPreviousEntry(datetime, excludeId) {
+  const before = loadEntries()
+    .filter((e) => e.id !== excludeId && new Date(e.datetime) < new Date(datetime));
+  if (!before.length) return null;
+  before.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+  return before[0];
+}
+
+function calcMpg(mileage, gallons, prevMileage) {
+  if (prevMileage == null || mileage <= prevMileage || !(gallons > 0)) return null;
+  return (mileage - prevMileage) / gallons;
+}
+
 function render() {
   const entries = loadEntries().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
   entriesList.innerHTML = '';
   emptyState.style.display = entries.length ? 'none' : 'block';
 
-  // for mpg calc, find prior fill-up by mileage (chronological order)
-  const byDateAsc = [...entries].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
-
   entries.forEach((entry) => {
-    const idx = byDateAsc.findIndex((e) => e.id === entry.id);
-    const prev = idx > 0 ? byDateAsc[idx - 1] : null;
+    const prev = findPreviousEntry(entry.datetime, entry.id);
     const gallons = entry.pricePerGallon > 0 ? entry.totalCost / entry.pricePerGallon : 0;
-    let mpg = null;
-    if (prev && entry.mileage > prev.mileage && gallons > 0) {
-      mpg = (entry.mileage - prev.mileage) / gallons;
-    }
+    const mpg = calcMpg(entry.mileage, gallons, prev && prev.mileage);
 
     const li = document.createElement('li');
     li.className = 'entry';
@@ -420,6 +431,29 @@ function render() {
   });
 }
 
+function updateMpgPreview() {
+  const mileage = parseFloat(mileageInput.value);
+  const price = parseFloat(priceInput.value);
+  const cost = parseFloat(totalCostInput.value);
+  const datetime = datetimeInput.value;
+
+  if (!datetime || !isFinite(mileage) || !isFinite(price) || !isFinite(cost) || price <= 0) {
+    mpgPreview.hidden = true;
+    return;
+  }
+
+  const prev = findPreviousEntry(datetime, editingId);
+  const mpg = calcMpg(mileage, cost / price, prev && prev.mileage);
+
+  if (mpg == null) {
+    mpgPreview.hidden = true;
+    return;
+  }
+
+  mpgPreview.hidden = false;
+  mpgPreview.textContent = `≈ ${mpg.toFixed(1)} MPG since last fill-up (${Number(prev.mileage).toLocaleString()} mi)`;
+}
+
 function resetToNewEntry() {
   editingId = null;
   form.reset();
@@ -430,6 +464,7 @@ function resetToNewEntry() {
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
   advancedPanel.hidden = true;
+  mpgPreview.hidden = true;
   locate();
 }
 
@@ -464,6 +499,7 @@ async function loadEntryIntoForm(entry) {
 
   checkMissingLocationData(entry);
   syncAdvancedFields();
+  updateMpgPreview();
 
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -520,6 +556,10 @@ locateBtn.addEventListener('click', locate);
 
 attachCurrencyInput(priceInput, 3);
 attachCurrencyInput(totalCostInput, 2);
+
+[mileageInput, priceInput, totalCostInput, datetimeInput].forEach((el) => {
+  el.addEventListener('input', updateMpgPreview);
+});
 
 importPhotoBtn.addEventListener('click', () => photoInput.click());
 
@@ -584,8 +624,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.6.2';
-const RELEASE_NOTES = 'Moved the "Advanced" toggle up near Date & Time, away from the Update button. The location line now merges into one row ("Saved location · 4502 East Oak Street") instead of an awkward blank line above the address.';
+const APP_VERSION = '1.7.0';
+const RELEASE_NOTES = 'Shows a live "≈ XX.X MPG since last fill-up" estimate under Mileage as you fill out the form, computed against your most recent prior entry. MPG is never stored — always computed fresh so it can’t go stale when you edit or delete entries.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
