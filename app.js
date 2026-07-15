@@ -121,6 +121,14 @@ function fmtMoney(n) {
   return '$' + Number(n).toFixed(2);
 }
 
+// Place names come from crowd-sourced OSM data (or free-typed text) and get
+// interpolated into innerHTML in the entries list — escape before rendering.
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 // Gas prices always end in 9/10 of a cent (e.g. $3.499), so the price field
 // only takes 2 decimal digits and this appends the fixed final "9" — same
 // convention as GasBuddy and most pump displays.
@@ -160,8 +168,8 @@ function fmtDistance(meters) {
   return feet < 1000 ? `${Math.round(feet)} ft` : `${(meters / 1609.34).toFixed(1)} mi`;
 }
 
-async function findNearbyFuelStations(lat, lon) {
-  const query = `[out:json][timeout:8];node["amenity"="fuel"](around:150,${lat},${lon});out body;`;
+async function findNearbyFuelStations(lat, lon, radiusMeters) {
+  const query = `[out:json][timeout:8];node["amenity"="fuel"](around:${radiusMeters},${lat},${lon});out body;`;
   const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
   if (!res.ok) throw new Error('overpass failed');
   const data = await res.json();
@@ -173,6 +181,20 @@ async function findNearbyFuelStations(lat, lon) {
       distance: distanceMeters(lat, lon, el.lat, el.lon),
     }))
     .sort((a, b) => a.distance - b.distance);
+}
+
+// Meters. Tight pass covers a station's footprint plus realistic GPS drift;
+// the wide pass only kicks in if that comes up empty, so a sparser area
+// still finds "the" nearest station instead of falling back to a road name.
+const FUEL_SEARCH_RADIUS_M = 150;
+const FUEL_SEARCH_RADIUS_WIDE_M = 1000;
+
+async function findNearbyFuelStationsExpanding(lat, lon) {
+  for (const radius of [FUEL_SEARCH_RADIUS_M, FUEL_SEARCH_RADIUS_WIDE_M]) {
+    const stations = await findNearbyFuelStations(lat, lon, radius);
+    if (stations.length) return { stations, radius };
+  }
+  return { stations: [], radius: null };
 }
 
 async function fetchStreetAddress(lat, lon) {
@@ -231,28 +253,45 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
     const state = abbrState(a);
     const cityState = [city, state].filter(Boolean).join(', ');
 
-    if (a.amenity || a.shop) {
-      // Reverse geocoding already matched a specific business — trust it.
-      locationInput.value = [a.amenity || a.shop, cityState].filter(Boolean).join(', ');
+    if (data.type === 'fuel') {
+      // Nominatim's own point already resolved to a fuel station — trust it
+      // immediately rather than spending a round-trip on Overpass to confirm
+      // what's already correct. (`address.amenity` holds the business NAME,
+      // not the tag type — the reliable signal is the top-level `type`.)
+      locationInput.value = [a.amenity, cityState].filter(Boolean).join(', ');
       setLocationLine(foundLabel, [a.house_number, a.road].filter(Boolean).join(' '));
       return;
     }
 
-    // No business matched (e.g. landed on an unnamed building/road) — this is
-    // a gas log, so specifically look for a nearby fuel station instead.
+    // This is a gas log, so a nearby fuel station always takes priority over
+    // whatever non-fuel business Nominatim's own point happens to snap to —
+    // otherwise an unrelated nearby business (a cafe, a shop) could get
+    // shown instead of the actual station you're standing at.
     try {
-      const stations = await findNearbyFuelStations(latitude, longitude);
+      const { stations, radius } = await findNearbyFuelStationsExpanding(latitude, longitude);
       if (stations.length) {
         const best = stations[0];
         locationInput.value = [best.name, cityState].filter(Boolean).join(', ');
         locationInput.dataset.lat = best.lat;
         locationInput.dataset.lon = best.lon;
-        setLocationLine(foundLabel, await fetchStreetAddress(best.lat, best.lon));
+        let address = await fetchStreetAddress(best.lat, best.lon);
+        // The wide-net pass found nothing close by — flag the distance so a
+        // lone, possibly-imprecise match isn't shown with false confidence.
+        if (radius > FUEL_SEARCH_RADIUS_M) {
+          address = [address, `${fmtDistance(best.distance)} away`].filter(Boolean).join(' · ');
+        }
+        setLocationLine(foundLabel, address);
         if (stations.length > 1) renderNearbyStations(stations, cityState);
         return;
       }
     } catch {
-      // Overpass unavailable — fall through to the generic address below.
+      // Overpass unavailable — fall through to Nominatim's own match below.
+    }
+
+    if (a.amenity || a.shop) {
+      locationInput.value = [a.amenity || a.shop, cityState].filter(Boolean).join(', ');
+      setLocationLine(foundLabel, [a.house_number, a.road].filter(Boolean).join(' '));
+      return;
     }
 
     const label = [a.road, cityState].filter(Boolean).join(', ');
@@ -434,7 +473,7 @@ function render() {
         <span><b>${gallons.toFixed(2)}</b> gal</span>
         ${mpg ? `<span><b>${mpg.toFixed(1)}</b> mpg</span>` : ''}
       </div>
-      ${entry.location ? `<div class="entry-location">📍 ${entry.location}</div>` : ''}
+      ${entry.location ? `<div class="entry-location">📍 ${escapeHtml(entry.location)}</div>` : ''}
       <span class="entry-chevron">›</span>
     `;
     entriesList.appendChild(li);
@@ -636,8 +675,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.2';
-const RELEASE_NOTES = 'The live MPG preview now also shows gallons ("27.9 MPG over 260 mi / 9.33 gal since last fill-up").';
+const APP_VERSION = '1.7.3';
+const RELEASE_NOTES = 'Fixes a real gap: an unrelated nearby business could show up instead of the actual gas station you\'re standing at. Nearby fuel stations are now checked first, with a wider search if nothing\'s close by.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
