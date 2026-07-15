@@ -452,8 +452,9 @@ function updateMpgPreview() {
     return;
   }
 
+  const gallons = cost / price;
   const prev = findPreviousEntry(datetime, editingId);
-  const mpg = calcMpg(mileage, cost / price, prev && prev.mileage);
+  const mpg = calcMpg(mileage, gallons, prev && prev.mileage);
 
   if (mpg == null) {
     mpgPreview.hidden = true;
@@ -462,7 +463,7 @@ function updateMpgPreview() {
 
   const milesTraveled = mileage - prev.mileage;
   mpgPreview.hidden = false;
-  mpgPreview.textContent = `≈ ${mpg.toFixed(1)} MPG over ${milesTraveled.toLocaleString()} mi since last fill-up`;
+  mpgPreview.textContent = `≈ ${mpg.toFixed(1)} MPG over ${milesTraveled.toLocaleString()} mi / ${gallons.toFixed(2)} gal since last fill-up`;
 }
 
 function resetToNewEntry() {
@@ -635,8 +636,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.1';
-const RELEASE_NOTES = 'Advanced toggle moved to a small gear icon next to Date & Time. MPG preview now shows miles traveled since the last fill-up instead of the old odometer reading. Price/gallon only needs 2 digits now — the final "9" is assumed automatically. Location source in Advanced is now a selectable dropdown.';
+const APP_VERSION = '1.7.2';
+const RELEASE_NOTES = 'The live MPG preview now also shows gallons ("27.9 MPG over 260 mi / 9.33 gal since last fill-up").';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
