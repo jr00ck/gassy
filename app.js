@@ -7,7 +7,6 @@ const priceInput = document.getElementById('pricePerGallon');
 const totalCostInput = document.getElementById('totalCost');
 const locationInput = document.getElementById('location');
 const locationStatus = document.getElementById('location-status');
-const locationAddress = document.getElementById('location-address');
 const locateBtn = document.getElementById('locate-btn');
 const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
@@ -31,10 +30,16 @@ const sourceField = document.getElementById('source-field');
 
 let editingId = null;
 let lastLocationSource = null; // 'photo' | 'gps' | 'manual' | null
+let currentLocationLabel = '';
 
 locationInput.addEventListener('input', () => {
   lastLocationSource = 'manual';
 });
+
+function setLocationLine(label, address) {
+  currentLocationLabel = label;
+  locationStatus.textContent = [label, address].filter(Boolean).join(' · ');
+}
 
 const SOURCE_LABELS = { photo: 'Photo', gps: 'GPS', manual: 'Typed manually' };
 
@@ -190,7 +195,7 @@ function renderNearbyStations(stations, cityState) {
       locationInput.dataset.lat = s.lat;
       locationInput.dataset.lon = s.lon;
       missingDataNotice.hidden = true;
-      locationAddress.textContent = await fetchStreetAddress(s.lat, s.lon);
+      setLocationLine(currentLocationLabel, await fetchStreetAddress(s.lat, s.lon));
       syncAdvancedFields();
     });
     nearbyStationsEl.appendChild(chip);
@@ -201,7 +206,7 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
   locationInput.dataset.lat = latitude;
   locationInput.dataset.lon = longitude;
   renderNearbyStations([]);
-  locationAddress.textContent = '';
+  setLocationLine('', '');
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
   try {
@@ -218,8 +223,7 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
     if (a.amenity || a.shop) {
       // Reverse geocoding already matched a specific business — trust it.
       locationInput.value = [a.amenity || a.shop, cityState].filter(Boolean).join(', ');
-      locationAddress.textContent = [a.house_number, a.road].filter(Boolean).join(' ');
-      locationStatus.textContent = foundLabel;
+      setLocationLine(foundLabel, [a.house_number, a.road].filter(Boolean).join(' '));
       return;
     }
 
@@ -232,9 +236,8 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
         locationInput.value = [best.name, cityState].filter(Boolean).join(', ');
         locationInput.dataset.lat = best.lat;
         locationInput.dataset.lon = best.lon;
-        locationAddress.textContent = await fetchStreetAddress(best.lat, best.lon);
+        setLocationLine(foundLabel, await fetchStreetAddress(best.lat, best.lon));
         if (stations.length > 1) renderNearbyStations(stations, cityState);
-        locationStatus.textContent = foundLabel;
         return;
       }
     } catch {
@@ -243,10 +246,10 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
 
     const label = [a.road, cityState].filter(Boolean).join(', ');
     locationInput.value = label || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-    locationStatus.textContent = foundLabel;
+    setLocationLine(foundLabel, '');
   } catch {
     locationInput.value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-    locationStatus.textContent = offlineLabel;
+    setLocationLine(offlineLabel, '');
   } finally {
     syncAdvancedFields();
   }
@@ -451,8 +454,7 @@ async function loadEntryIntoForm(entry) {
   locationInput.dataset.lat = entry.lat != null ? entry.lat : '';
   locationInput.dataset.lon = entry.lon != null ? entry.lon : '';
   lastLocationSource = entry.source || null;
-  locationStatus.textContent = '';
-  locationAddress.textContent = '';
+  setLocationLine('', '');
   renderNearbyStations([]);
 
   submitBtn.textContent = 'Update fill-up';
@@ -466,7 +468,7 @@ async function loadEntryIntoForm(entry) {
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   if (entry.lat != null && entry.lon != null) {
-    locationAddress.textContent = await fetchStreetAddress(entry.lat, entry.lon);
+    setLocationLine('Saved location', await fetchStreetAddress(entry.lat, entry.lon));
   }
 }
 
@@ -582,8 +584,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.6.1';
-const RELEASE_NOTES = 'Fixes the street address not showing when editing an entry. Adds an "Advanced" toggle showing the raw stored fields (ID, latitude, longitude, location source) — "Fill from photo" now lives there instead of on the main form. Missing-GPS recovery now works for entries added before this tracking existed too.';
+const APP_VERSION = '1.6.2';
+const RELEASE_NOTES = 'Moved the "Advanced" toggle up near Date & Time, away from the Update button. The location line now merges into one row ("Saved location · 4502 East Oak Street") instead of an awkward blank line above the address.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
