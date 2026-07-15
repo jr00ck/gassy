@@ -16,6 +16,19 @@ const importPhotoBtn = document.getElementById('import-photo-btn');
 const photoInput = document.getElementById('photo-input');
 const photoStatus = document.getElementById('photo-status');
 const nearbyStationsEl = document.getElementById('nearby-stations');
+const submitBtn = document.getElementById('submit-btn');
+const editBanner = document.getElementById('edit-banner');
+const editBannerText = document.getElementById('edit-banner-text');
+const cancelEditBtn = document.getElementById('cancel-edit-btn');
+const deleteEntryBtn = document.getElementById('delete-entry-btn');
+const missingDataNotice = document.getElementById('missing-data-notice');
+
+let editingId = null;
+let lastLocationSource = null; // 'photo' | 'gps' | 'manual' | null
+
+locationInput.addEventListener('input', () => {
+  lastLocationSource = 'manual';
+});
 
 const STATE_ABBR = {
   Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',
@@ -157,6 +170,8 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
   locationInput.dataset.lon = longitude;
   renderNearbyStations([]);
   locationAddress.textContent = '';
+  missingDataNotice.hidden = true;
+  missingDataNotice.innerHTML = '';
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
@@ -210,12 +225,15 @@ function locate() {
   }
   locationStatus.textContent = 'Locating…';
   navigator.geolocation.getCurrentPosition(
-    (pos) => reverseGeocode(
-      pos.coords.latitude,
-      pos.coords.longitude,
-      'Current location',
-      'Current location (offline — coordinates only)'
-    ),
+    (pos) => {
+      lastLocationSource = 'gps';
+      return reverseGeocode(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        'Current location',
+        'Current location (offline — coordinates only)'
+      );
+    },
     () => {
       locationStatus.textContent = 'Location unavailable — enter manually';
     },
@@ -346,8 +364,8 @@ function render() {
 
     const li = document.createElement('li');
     li.className = 'entry';
+    li.dataset.id = entry.id;
     li.innerHTML = `
-      <button class="delete-btn" data-id="${entry.id}" aria-label="Delete entry">✕</button>
       <div class="entry-top">
         <span class="entry-cost">${fmtMoney(entry.totalCost)}</span>
         <span class="entry-date">${fmtDate(entry.datetime)}</span>
@@ -359,16 +377,67 @@ function render() {
         ${mpg ? `<span><b>${mpg.toFixed(1)}</b> mpg</span>` : ''}
       </div>
       ${entry.location ? `<div class="entry-location">📍 ${entry.location}</div>` : ''}
+      <span class="entry-chevron">›</span>
     `;
     entriesList.appendChild(li);
   });
 }
 
+function resetToNewEntry() {
+  editingId = null;
+  form.reset();
+  setDefaultDatetime();
+  submitBtn.textContent = 'Add fill-up';
+  editBanner.hidden = true;
+  deleteEntryBtn.hidden = true;
+  missingDataNotice.hidden = true;
+  missingDataNotice.innerHTML = '';
+  locate();
+}
+
+function checkMissingLocationData(entry) {
+  if (entry.location && (entry.lat == null || entry.lon == null)) {
+    missingDataNotice.hidden = false;
+    if (entry.source === 'photo') {
+      missingDataNotice.innerHTML = `GPS location wasn't saved with this entry. <button type="button" id="recover-photo-btn">Re-select the photo to add it</button>`;
+      document.getElementById('recover-photo-btn').addEventListener('click', () => photoInput.click());
+    } else {
+      missingDataNotice.textContent = "GPS location wasn't saved with this entry, and can't be recovered automatically since it wasn't added from a photo.";
+    }
+  } else {
+    missingDataNotice.hidden = true;
+    missingDataNotice.innerHTML = '';
+  }
+}
+
+function loadEntryIntoForm(entry) {
+  editingId = entry.id;
+  datetimeInput.value = entry.datetime;
+  mileageInput.value = entry.mileage;
+  priceInput.value = entry.pricePerGallon.toFixed(3);
+  totalCostInput.value = entry.totalCost.toFixed(2);
+  locationInput.value = entry.location || '';
+  locationInput.dataset.lat = entry.lat != null ? entry.lat : '';
+  locationInput.dataset.lon = entry.lon != null ? entry.lon : '';
+  lastLocationSource = entry.source || null;
+  locationStatus.textContent = '';
+  locationAddress.textContent = '';
+  renderNearbyStations([]);
+
+  submitBtn.textContent = 'Update fill-up';
+  editBannerText.textContent = `Editing fill-up from ${fmtDate(entry.datetime)}`;
+  editBanner.hidden = false;
+  deleteEntryBtn.hidden = false;
+
+  checkMissingLocationData(entry);
+
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   const entries = loadEntries();
-  entries.push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  const data = {
     datetime: datetimeInput.value,
     mileage: parseFloat(mileageInput.value),
     pricePerGallon: parseFloat(priceInput.value),
@@ -376,22 +445,36 @@ form.addEventListener('submit', (e) => {
     location: locationInput.value.trim(),
     lat: locationInput.dataset.lat ? parseFloat(locationInput.dataset.lat) : null,
     lon: locationInput.dataset.lon ? parseFloat(locationInput.dataset.lon) : null,
-  });
+    source: lastLocationSource,
+  };
+
+  if (editingId) {
+    const idx = entries.findIndex((entry) => entry.id === editingId);
+    if (idx !== -1) entries[idx] = { ...entries[idx], ...data };
+  } else {
+    entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...data });
+  }
   saveEntries(entries);
 
-  form.reset();
-  setDefaultDatetime();
-  locate();
+  resetToNewEntry();
   render();
 });
 
 entriesList.addEventListener('click', (e) => {
-  const btn = e.target.closest('.delete-btn');
-  if (!btn) return;
-  const id = btn.dataset.id;
+  const li = e.target.closest('.entry');
+  if (!li) return;
+  const entry = loadEntries().find((en) => en.id === li.dataset.id);
+  if (entry) loadEntryIntoForm(entry);
+});
+
+cancelEditBtn.addEventListener('click', resetToNewEntry);
+
+deleteEntryBtn.addEventListener('click', () => {
+  if (!editingId) return;
   if (!confirm('Delete this fill-up?')) return;
-  const entries = loadEntries().filter((entry) => entry.id !== id);
+  const entries = loadEntries().filter((entry) => entry.id !== editingId);
   saveEntries(entries);
+  resetToNewEntry();
   render();
 });
 
@@ -416,6 +499,7 @@ photoInput.addEventListener('change', async () => {
     if (inputValue) datetimeInput.value = inputValue;
 
     if (exif && exif.gps) {
+      lastLocationSource = 'photo';
       await reverseGeocode(
         exif.gps.lat,
         exif.gps.lon,
@@ -462,8 +546,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.5.2';
-const RELEASE_NOTES = 'The "Fill from photo" button is now a small camera icon next to the Date & Time label instead of a full-width button, since it’s used rarely.';
+const APP_VERSION = '1.6.0';
+const RELEASE_NOTES = 'Tap any logged fill-up to edit or delete it (the ✕ icon is gone). Entries missing GPS data now show a note, with an option to re-select the original photo to recover it.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;

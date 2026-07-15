@@ -12,6 +12,8 @@
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -292,7 +294,23 @@ input:focus {
   border: 1px solid var(--card-border);
   border-radius: 14px;
   padding: 14px 16px;
+  padding-right: 34px;
   position: relative;
+  cursor: pointer;
+}
+
+.entry:active {
+  opacity: 0.8;
+}
+
+.entry-chevron {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  opacity: 0.5;
+  font-size: 1.1rem;
 }
 
 .entry-top {
@@ -331,16 +349,52 @@ input:focus {
   color: var(--text-dim);
 }
 
-.delete-btn {
-  position: absolute;
-  top: 10px;
-  right: 12px;
+.edit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 107, 53, 0.1);
+  border: 1px solid rgba(255, 107, 53, 0.25);
+  border-radius: 10px;
+  padding: 8px 10px 8px 14px;
+  margin-bottom: 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.missing-notice {
+  margin-top: 8px;
+  background: rgba(255, 107, 53, 0.08);
+  border: 1px solid rgba(255, 107, 53, 0.2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.missing-notice button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.delete-link-btn {
+  display: block;
+  width: 100%;
   background: none;
   border: none;
   color: var(--danger);
-  font-size: 0.95rem;
+  font-size: 0.82rem;
   cursor: pointer;
-  padding: 4px;
+  padding: 12px;
+  margin-top: 6px;
 }
 
 .app-footer {

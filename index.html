@@ -33,6 +33,11 @@
 
 <main>
   <form id="entry-form" class="card">
+    <div id="edit-banner" class="edit-banner" hidden>
+      <span id="edit-banner-text">Editing fill-up</span>
+      <button type="button" id="cancel-edit-btn" class="link-btn">Cancel</button>
+    </div>
+
     <div class="field">
       <div class="field-label-row">
         <label for="datetime">Date &amp; time</label>
@@ -69,9 +74,11 @@
       <p id="location-status" class="hint"></p>
       <p id="location-address" class="hint"></p>
       <div id="nearby-stations" class="nearby-stations" hidden></div>
+      <div id="missing-data-notice" class="missing-notice" hidden></div>
     </div>
 
-    <button type="submit" class="primary-btn">Add fill-up</button>
+    <button type="submit" class="primary-btn" id="submit-btn">Add fill-up</button>
+    <button type="button" id="delete-entry-btn" class="delete-link-btn" hidden>Delete this fill-up</button>
   </form>
 
   <section class="log-section">
