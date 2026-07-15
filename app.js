@@ -22,12 +22,42 @@ const editBannerText = document.getElementById('edit-banner-text');
 const cancelEditBtn = document.getElementById('cancel-edit-btn');
 const deleteEntryBtn = document.getElementById('delete-entry-btn');
 const missingDataNotice = document.getElementById('missing-data-notice');
+const advancedToggle = document.getElementById('advanced-toggle');
+const advancedPanel = document.getElementById('advanced-panel');
+const entryIdField = document.getElementById('entry-id-field');
+const latField = document.getElementById('lat-field');
+const lonField = document.getElementById('lon-field');
+const sourceField = document.getElementById('source-field');
 
 let editingId = null;
 let lastLocationSource = null; // 'photo' | 'gps' | 'manual' | null
 
 locationInput.addEventListener('input', () => {
   lastLocationSource = 'manual';
+});
+
+const SOURCE_LABELS = { photo: 'Photo', gps: 'GPS', manual: 'Typed manually' };
+
+function syncAdvancedFields() {
+  entryIdField.value = editingId || '';
+  latField.value = locationInput.dataset.lat || '';
+  lonField.value = locationInput.dataset.lon || '';
+  sourceField.value = SOURCE_LABELS[lastLocationSource] || 'Unknown';
+}
+
+advancedToggle.addEventListener('click', () => {
+  advancedPanel.hidden = !advancedPanel.hidden;
+  if (!advancedPanel.hidden) syncAdvancedFields();
+});
+
+latField.addEventListener('input', () => {
+  locationInput.dataset.lat = latField.value.trim();
+  missingDataNotice.hidden = true;
+});
+
+lonField.addEventListener('input', () => {
+  locationInput.dataset.lon = lonField.value.trim();
+  missingDataNotice.hidden = true;
 });
 
 const STATE_ABBR = {
@@ -159,7 +189,9 @@ function renderNearbyStations(stations, cityState) {
       locationInput.value = [s.name, cityState].filter(Boolean).join(', ');
       locationInput.dataset.lat = s.lat;
       locationInput.dataset.lon = s.lon;
+      missingDataNotice.hidden = true;
       locationAddress.textContent = await fetchStreetAddress(s.lat, s.lon);
+      syncAdvancedFields();
     });
     nearbyStationsEl.appendChild(chip);
   });
@@ -215,6 +247,8 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
   } catch {
     locationInput.value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     locationStatus.textContent = offlineLabel;
+  } finally {
+    syncAdvancedFields();
   }
 }
 
@@ -392,25 +426,22 @@ function resetToNewEntry() {
   deleteEntryBtn.hidden = true;
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
+  advancedPanel.hidden = true;
   locate();
 }
 
 function checkMissingLocationData(entry) {
   if (entry.location && (entry.lat == null || entry.lon == null)) {
     missingDataNotice.hidden = false;
-    if (entry.source === 'photo') {
-      missingDataNotice.innerHTML = `GPS location wasn't saved with this entry. <button type="button" id="recover-photo-btn">Re-select the photo to add it</button>`;
-      document.getElementById('recover-photo-btn').addEventListener('click', () => photoInput.click());
-    } else {
-      missingDataNotice.textContent = "GPS location wasn't saved with this entry, and can't be recovered automatically since it wasn't added from a photo.";
-    }
+    missingDataNotice.innerHTML = `GPS coordinates weren't saved with this entry. If it was added from a photo, <button type="button" id="recover-photo-btn">re-select that photo</button> to recover them, or enter coordinates directly under Advanced.`;
+    document.getElementById('recover-photo-btn').addEventListener('click', () => photoInput.click());
   } else {
     missingDataNotice.hidden = true;
     missingDataNotice.innerHTML = '';
   }
 }
 
-function loadEntryIntoForm(entry) {
+async function loadEntryIntoForm(entry) {
   editingId = entry.id;
   datetimeInput.value = entry.datetime;
   mileageInput.value = entry.mileage;
@@ -430,8 +461,13 @@ function loadEntryIntoForm(entry) {
   deleteEntryBtn.hidden = false;
 
   checkMissingLocationData(entry);
+  syncAdvancedFields();
 
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  if (entry.lat != null && entry.lon != null) {
+    locationAddress.textContent = await fetchStreetAddress(entry.lat, entry.lon);
+  }
 }
 
 form.addEventListener('submit', (e) => {
@@ -546,8 +582,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.6.0';
-const RELEASE_NOTES = 'Tap any logged fill-up to edit or delete it (the ✕ icon is gone). Entries missing GPS data now show a note, with an option to re-select the original photo to recover it.';
+const APP_VERSION = '1.6.1';
+const RELEASE_NOTES = 'Fixes the street address not showing when editing an entry. Adds an "Advanced" toggle showing the raw stored fields (ID, latitude, longitude, location source) — "Fill from photo" now lives there instead of on the main form. Missing-GPS recovery now works for entries added before this tracking existed too.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
