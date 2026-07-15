@@ -60,6 +60,7 @@
         <button type="button" id="locate-btn" title="Refresh current location" aria-label="Refresh current location">📍</button>
       </div>
       <p id="location-status" class="hint"></p>
+      <div id="nearby-stations" class="nearby-stations" hidden></div>
     </div>
 
     <button type="submit" class="primary-btn">Add fill-up</button>
@@ -81,12 +82,12 @@
     </div>
     <details class="update-notes">
       <summary>What's new</summary>
-      <p>Adds a "Fill from photo" button that reads the date and GPS location out of a picked photo's metadata to autofill the form. Also improves location accuracy to resolve the actual business name instead of just the street.</p>
+      <p>Fixes gas station locations sometimes resolving to a nearby street or building name instead of the actual station — it now specifically looks up nearby fuel stations and picks the closest one, showing alternatives to tap if there's more than one nearby. Fill-up coordinates are now also included in CSV exports.</p>
     </details>
   </div>
 
   <footer class="app-footer">
-    <span class="app-footer-version">v1.3.0</span>
+    <span class="app-footer-version">v1.4.0</span>
   </footer>
 </main>
 

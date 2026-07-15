@@ -14,6 +14,7 @@ const exportBtn = document.getElementById('export-btn');
 const importPhotoBtn = document.getElementById('import-photo-btn');
 const photoInput = document.getElementById('photo-input');
 const photoStatus = document.getElementById('photo-status');
+const nearbyStationsEl = document.getElementById('nearby-stations');
 
 function loadEntries() {
   try {
@@ -50,9 +51,60 @@ function fmtMoney(n) {
   return '$' + Number(n).toFixed(2);
 }
 
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function fmtDistance(meters) {
+  const feet = meters * 3.28084;
+  return feet < 1000 ? `${Math.round(feet)} ft` : `${(meters / 1609.34).toFixed(1)} mi`;
+}
+
+async function findNearbyFuelStations(lat, lon) {
+  const query = `[out:json][timeout:8];node["amenity"="fuel"](around:150,${lat},${lon});out body;`;
+  const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error('overpass failed');
+  const data = await res.json();
+  return (data.elements || [])
+    .map((el) => ({
+      name: (el.tags && (el.tags.name || el.tags.brand)) || 'Fuel station',
+      lat: el.lat,
+      lon: el.lon,
+      distance: distanceMeters(lat, lon, el.lat, el.lon),
+    }))
+    .sort((a, b) => a.distance - b.distance);
+}
+
+function renderNearbyStations(stations, cityState) {
+  nearbyStationsEl.innerHTML = '';
+  if (!stations.length) {
+    nearbyStationsEl.hidden = true;
+    return;
+  }
+  nearbyStationsEl.hidden = false;
+  stations.forEach((s) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'station-chip';
+    chip.textContent = `${s.name} · ${fmtDistance(s.distance)}`;
+    chip.addEventListener('click', () => {
+      locationInput.value = [s.name, cityState].filter(Boolean).join(', ');
+      locationInput.dataset.lat = s.lat;
+      locationInput.dataset.lon = s.lon;
+    });
+    nearbyStationsEl.appendChild(chip);
+  });
+}
+
 async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
   locationInput.dataset.lat = latitude;
   locationInput.dataset.lon = longitude;
+  renderNearbyStations([]);
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
@@ -60,10 +112,35 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
     if (!res.ok) throw new Error('reverse geocode failed');
     const data = await res.json();
     const a = data.address || {};
-    const place = a.amenity || a.shop || a.road || '';
     const city = a.city || a.town || a.village || a.hamlet || '';
     const state = a.state_code || a.state || '';
-    const label = [place, city, state].filter(Boolean).join(', ');
+    const cityState = [city, state].filter(Boolean).join(', ');
+
+    if (a.amenity || a.shop) {
+      // Reverse geocoding already matched a specific business — trust it.
+      locationInput.value = [a.amenity || a.shop, cityState].filter(Boolean).join(', ');
+      locationStatus.textContent = foundLabel;
+      return;
+    }
+
+    // No business matched (e.g. landed on an unnamed building/road) — this is
+    // a gas log, so specifically look for a nearby fuel station instead.
+    try {
+      const stations = await findNearbyFuelStations(latitude, longitude);
+      if (stations.length) {
+        const best = stations[0];
+        locationInput.value = [best.name, cityState].filter(Boolean).join(', ');
+        locationInput.dataset.lat = best.lat;
+        locationInput.dataset.lon = best.lon;
+        if (stations.length > 1) renderNearbyStations(stations, cityState);
+        locationStatus.textContent = foundLabel;
+        return;
+      }
+    } catch {
+      // Overpass unavailable — fall through to the generic address below.
+    }
+
+    const label = [a.road, cityState].filter(Boolean).join(', ');
     locationInput.value = label || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     locationStatus.textContent = foundLabel;
   } catch {
@@ -306,10 +383,10 @@ photoInput.addEventListener('change', async () => {
 exportBtn.addEventListener('click', () => {
   const entries = loadEntries().sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
   if (!entries.length) return;
-  const header = ['datetime', 'mileage', 'price_per_gallon', 'total_cost', 'gallons', 'location'];
+  const header = ['datetime', 'mileage', 'price_per_gallon', 'total_cost', 'gallons', 'location', 'latitude', 'longitude'];
   const rows = entries.map((e) => {
     const gallons = e.pricePerGallon > 0 ? (e.totalCost / e.pricePerGallon).toFixed(3) : '';
-    return [e.datetime, e.mileage, e.pricePerGallon, e.totalCost, gallons, `"${(e.location || '').replace(/"/g, '""')}"`].join(',');
+    return [e.datetime, e.mileage, e.pricePerGallon, e.totalCost, gallons, `"${(e.location || '').replace(/"/g, '""')}"`, e.lat ?? '', e.lon ?? ''].join(',');
   });
   const csv = [header.join(','), ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });

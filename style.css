@@ -121,6 +121,27 @@ input:focus {
   min-height: 1em;
 }
 
+.nearby-stations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.station-chip {
+  background: #12141a;
+  border: 1px solid var(--card-border);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.station-chip:active {
+  opacity: 0.8;
+}
+
 .primary-btn {
   width: 100%;
   background: var(--accent);
