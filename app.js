@@ -176,7 +176,33 @@ locate();
 render();
 
 if ('serviceWorker' in navigator) {
+  const updateBanner = document.getElementById('update-banner');
+  const updateRefreshBtn = document.getElementById('update-refresh-btn');
+  let refreshing = false;
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            updateBanner.hidden = false;
+          }
+        });
+      });
+    }).catch(() => {});
+  });
+
+  updateRefreshBtn.addEventListener('click', () => {
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      reg && reg.waiting && reg.waiting.postMessage('SKIP_WAITING');
+    });
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
   });
 }

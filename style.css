@@ -224,10 +224,43 @@ input:focus {
   padding: 4px;
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 20px;
+  font-size: 0.85rem;
+}
+
+.update-banner button {
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 .app-footer {
+  margin-top: 44px;
+  padding: 18px 0 max(18px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--card-border);
   text-align: center;
-  font-size: 0.72rem;
+}
+
+.app-footer-version {
+  display: inline-block;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--text-dim);
-  opacity: 0.6;
-  margin-top: 28px;
+  opacity: 0.45;
 }
