@@ -179,30 +179,52 @@ if ('serviceWorker' in navigator) {
   const updateBanner = document.getElementById('update-banner');
   const updateRefreshBtn = document.getElementById('update-refresh-btn');
   let refreshing = false;
+  let currentReg = null;
+
+  function reloadOnce() {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  }
+
+  function watchForUpdate(reg) {
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          updateBanner.hidden = false;
+        }
+      });
+    });
+  }
 
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((reg) => {
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            updateBanner.hidden = false;
-          }
-        });
+      currentReg = reg;
+      watchForUpdate(reg);
+      // Standalone iOS apps often resume from the background without a fresh
+      // page load, so proactively re-check whenever the app comes back to front.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
       });
     }).catch(() => {});
   });
 
   updateRefreshBtn.addEventListener('click', () => {
-    navigator.serviceWorker.getRegistration().then((reg) => {
-      reg && reg.waiting && reg.waiting.postMessage('SKIP_WAITING');
+    updateRefreshBtn.disabled = true;
+    updateRefreshBtn.textContent = 'Refreshing…';
+    (currentReg
+      ? Promise.resolve(currentReg)
+      : navigator.serviceWorker.getRegistration()
+    ).then((reg) => {
+      const worker = reg && (reg.waiting || reg.installing);
+      if (worker) worker.postMessage('SKIP_WAITING');
     });
+    // Safari on iOS doesn't always fire controllerchange in standalone mode,
+    // so force a reload shortly after regardless.
+    setTimeout(reloadOnce, 1200);
   });
 
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
+  navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
 }

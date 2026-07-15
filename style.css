@@ -225,16 +225,19 @@ input:focus {
 }
 
 .update-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   background: var(--card);
   border: 1px solid var(--accent);
   border-radius: 12px;
   padding: 12px 14px;
   margin-top: 20px;
   font-size: 0.85rem;
+}
+
+.update-banner-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .update-banner button {
@@ -247,6 +250,45 @@ input:focus {
   font-weight: 700;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.update-banner button:disabled {
+  opacity: 0.6;
+}
+
+.update-notes {
+  margin-top: 8px;
+}
+
+.update-notes summary {
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.update-notes summary::-webkit-details-marker {
+  display: none;
+}
+
+.update-notes summary::before {
+  content: '›';
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.update-notes[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.update-notes p {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.4;
 }
 
 .app-footer {
