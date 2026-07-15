@@ -461,8 +461,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.5.0';
-const RELEASE_NOTES = 'Pull down from the top to check for updates (replaces the old auto-update banner). Prices now auto-format as you type — no need to type the decimal point. Gas station street addresses now show under the location field, and state names are abbreviated.';
+const APP_VERSION = '1.5.1';
+const RELEASE_NOTES = 'Fixes pull-to-refresh so the whole page now moves naturally with your finger (previously only a small floating arrow moved, which felt broken).';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
@@ -497,7 +497,9 @@ if ('serviceWorker' in navigator) {
 // --- Pull-to-refresh: standard iOS gesture, checks for + applies an update ---
 
 const ptrIndicator = document.getElementById('ptr-indicator');
+const appContent = document.getElementById('app-content');
 const PTR_THRESHOLD = 70;
+const PTR_MAX = 110;
 let ptrStartY = null;
 let ptrPulling = false;
 let ptrReady = false;
@@ -516,10 +518,14 @@ document.addEventListener('touchmove', (e) => {
   const delta = e.touches[0].clientY - ptrStartY;
   if (delta > 0 && window.scrollY <= 0) {
     e.preventDefault();
-    const pull = Math.min(delta, PTR_THRESHOLD * 1.5);
+    // Rubber-band damping so it eases off the further you pull, like the
+    // native iOS overscroll bounce, rather than tracking the finger 1:1.
+    const pull = Math.min(delta * 0.55, PTR_MAX);
     ptrReady = pull >= PTR_THRESHOLD;
+    appContent.classList.add('ptr-dragging');
     ptrIndicator.classList.add('ptr-dragging');
-    ptrIndicator.style.transform = `translateY(${pull - 50}px)`;
+    appContent.style.transform = `translateY(${pull}px)`;
+    ptrIndicator.style.transform = `translateY(${pull - 30}px)`;
     ptrIndicator.style.opacity = String(Math.min(pull / PTR_THRESHOLD, 1));
   } else {
     ptrPulling = false;
@@ -529,10 +535,12 @@ document.addEventListener('touchmove', (e) => {
 document.addEventListener('touchend', () => {
   if (!ptrPulling) return;
   ptrPulling = false;
+  appContent.classList.remove('ptr-dragging');
   ptrIndicator.classList.remove('ptr-dragging');
   if (ptrReady) {
     triggerPullRefresh();
   } else {
+    appContent.style.transform = '';
     ptrIndicator.style.transform = '';
     ptrIndicator.style.opacity = '';
   }
@@ -542,7 +550,8 @@ document.addEventListener('touchend', () => {
 async function triggerPullRefresh() {
   ptrRefreshing = true;
   ptrIndicator.classList.add('ptr-spinning');
-  ptrIndicator.style.transform = 'translateY(20px)';
+  appContent.style.transform = 'translateY(56px)';
+  ptrIndicator.style.transform = 'translateY(24px)';
   ptrIndicator.style.opacity = '1';
 
   try {

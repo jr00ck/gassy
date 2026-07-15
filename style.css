@@ -75,8 +75,8 @@ body {
   right: 0;
   display: flex;
   justify-content: center;
-  padding-top: calc(env(safe-area-inset-top) + 14px);
-  transform: translateY(-60px);
+  padding-top: calc(env(safe-area-inset-top) + 16px);
+  transform: translateY(-40px);
   opacity: 0;
   pointer-events: none;
   z-index: 50;
@@ -88,15 +88,23 @@ body {
 }
 
 .ptr-spinner {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  border: 2px solid var(--card-border);
+  border: 2.5px solid var(--card-border);
   border-top-color: var(--accent);
 }
 
 .ptr-indicator.ptr-spinning .ptr-spinner {
   animation: ptr-spin 0.7s linear infinite;
+}
+
+#app-content {
+  transition: transform 0.25s ease;
+}
+
+#app-content.ptr-dragging {
+  transition: none;
 }
 
 @keyframes ptr-spin {
