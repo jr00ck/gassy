@@ -39,11 +39,13 @@
     </div>
 
     <div class="field">
-      <label for="datetime">Date &amp; time</label>
+      <div class="field-label-row">
+        <label for="datetime">Date &amp; time</label>
+        <button type="button" id="advanced-toggle" class="icon-btn" title="Advanced" aria-label="Advanced">⚙</button>
+      </div>
       <input type="datetime-local" id="datetime" name="datetime" required>
     </div>
 
-    <button type="button" id="advanced-toggle" class="advanced-toggle">⚙ Advanced</button>
     <div id="advanced-panel" class="advanced-panel" hidden>
       <div class="field">
         <label for="entry-id-field">Entry ID</label>
@@ -63,7 +65,12 @@
 
       <div class="field">
         <label for="source-field">Location source</label>
-        <input type="text" id="source-field" readonly placeholder="—">
+        <select id="source-field">
+          <option value="">Unknown</option>
+          <option value="photo">Photo</option>
+          <option value="gps">GPS</option>
+          <option value="manual">Typed manually</option>
+        </select>
       </div>
 
       <button type="button" id="import-photo-btn" class="secondary-outline-btn">📷 Fill date &amp; location from photo</button>
@@ -80,7 +87,10 @@
     <div class="row">
       <div class="field">
         <label for="pricePerGallon">Price / gallon</label>
-        <input type="text" id="pricePerGallon" name="pricePerGallon" inputmode="numeric" placeholder="3.499" required>
+        <div class="price-input-row">
+          <input type="text" id="pricePerGallon" name="pricePerGallon" inputmode="numeric" placeholder="3.49" required>
+          <span class="price-suffix" aria-hidden="true">9</span>
+        </div>
       </div>
 
       <div class="field">

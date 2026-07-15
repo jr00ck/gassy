@@ -42,18 +42,20 @@ function setLocationLine(label, address) {
   locationStatus.textContent = [label, address].filter(Boolean).join(' · ');
 }
 
-const SOURCE_LABELS = { photo: 'Photo', gps: 'GPS', manual: 'Typed manually' };
-
 function syncAdvancedFields() {
   entryIdField.value = editingId || '';
   latField.value = locationInput.dataset.lat || '';
   lonField.value = locationInput.dataset.lon || '';
-  sourceField.value = SOURCE_LABELS[lastLocationSource] || 'Unknown';
+  sourceField.value = lastLocationSource || '';
 }
 
 advancedToggle.addEventListener('click', () => {
   advancedPanel.hidden = !advancedPanel.hidden;
   if (!advancedPanel.hidden) syncAdvancedFields();
+});
+
+sourceField.addEventListener('change', () => {
+  lastLocationSource = sourceField.value || null;
 });
 
 latField.addEventListener('input', () => {
@@ -117,6 +119,14 @@ function fmtDate(iso) {
 
 function fmtMoney(n) {
   return '$' + Number(n).toFixed(2);
+}
+
+// Gas prices always end in 9/10 of a cent (e.g. $3.499), so the price field
+// only takes 2 decimal digits and this appends the fixed final "9" — same
+// convention as GasBuddy and most pump displays.
+function getPricePerGallon() {
+  const p = parseFloat(priceInput.value);
+  return isFinite(p) ? p + 0.009 : NaN;
 }
 
 // Auto-decimal currency entry: digits shift in from the right (like a POS
@@ -433,7 +443,7 @@ function render() {
 
 function updateMpgPreview() {
   const mileage = parseFloat(mileageInput.value);
-  const price = parseFloat(priceInput.value);
+  const price = getPricePerGallon();
   const cost = parseFloat(totalCostInput.value);
   const datetime = datetimeInput.value;
 
@@ -450,8 +460,9 @@ function updateMpgPreview() {
     return;
   }
 
+  const milesTraveled = mileage - prev.mileage;
   mpgPreview.hidden = false;
-  mpgPreview.textContent = `≈ ${mpg.toFixed(1)} MPG since last fill-up (${Number(prev.mileage).toLocaleString()} mi)`;
+  mpgPreview.textContent = `≈ ${mpg.toFixed(1)} MPG over ${milesTraveled.toLocaleString()} mi since last fill-up`;
 }
 
 function resetToNewEntry() {
@@ -483,7 +494,7 @@ async function loadEntryIntoForm(entry) {
   editingId = entry.id;
   datetimeInput.value = entry.datetime;
   mileageInput.value = entry.mileage;
-  priceInput.value = entry.pricePerGallon.toFixed(3);
+  priceInput.value = entry.pricePerGallon.toFixed(3).slice(0, -1);
   totalCostInput.value = entry.totalCost.toFixed(2);
   locationInput.value = entry.location || '';
   locationInput.dataset.lat = entry.lat != null ? entry.lat : '';
@@ -514,7 +525,7 @@ form.addEventListener('submit', (e) => {
   const data = {
     datetime: datetimeInput.value,
     mileage: parseFloat(mileageInput.value),
-    pricePerGallon: parseFloat(priceInput.value),
+    pricePerGallon: getPricePerGallon(),
     totalCost: parseFloat(totalCostInput.value),
     location: locationInput.value.trim(),
     lat: locationInput.dataset.lat ? parseFloat(locationInput.dataset.lat) : null,
@@ -554,7 +565,7 @@ deleteEntryBtn.addEventListener('click', () => {
 
 locateBtn.addEventListener('click', locate);
 
-attachCurrencyInput(priceInput, 3);
+attachCurrencyInput(priceInput, 2);
 attachCurrencyInput(totalCostInput, 2);
 
 [mileageInput, priceInput, totalCostInput, datetimeInput].forEach((el) => {
@@ -624,8 +635,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.0';
-const RELEASE_NOTES = 'Shows a live "≈ XX.X MPG since last fill-up" estimate under Mileage as you fill out the form, computed against your most recent prior entry. MPG is never stored — always computed fresh so it can’t go stale when you edit or delete entries.';
+const APP_VERSION = '1.7.1';
+const RELEASE_NOTES = 'Advanced toggle moved to a small gear icon next to Date & Time. MPG preview now shows miles traveled since the last fill-up instead of the old odometer reading. Price/gallon only needs 2 digits now — the final "9" is assumed automatically. Location source in Advanced is now a selectable dropdown.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
