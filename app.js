@@ -407,6 +407,7 @@ photoInput.addEventListener('change', async () => {
   photoInput.value = '';
   if (!file) return;
 
+  photoStatus.hidden = false;
   photoStatus.textContent = 'Reading photo…';
   try {
     const exif = readExif(await file.arrayBuffer());
@@ -461,8 +462,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.5.1';
-const RELEASE_NOTES = 'Fixes pull-to-refresh so the whole page now moves naturally with your finger (previously only a small floating arrow moved, which felt broken).';
+const APP_VERSION = '1.5.2';
+const RELEASE_NOTES = 'The "Fill from photo" button is now a small camera icon next to the Date & Time label instead of a full-width button, since it’s used rarely.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;

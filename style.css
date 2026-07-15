@@ -149,6 +149,32 @@ label {
   letter-spacing: 0.03em;
 }
 
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  border-radius: 8px;
+  width: 26px;
+  height: 26px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0.6;
+}
+
+.icon-btn:active {
+  opacity: 1;
+}
+
 input[type="text"],
 input[type="number"],
 input[type="datetime-local"] {
@@ -229,22 +255,6 @@ input:focus {
 
 .primary-btn:active {
   opacity: 0.85;
-}
-
-.secondary-btn {
-  width: 100%;
-  background: transparent;
-  color: var(--accent);
-  border: 1px dashed var(--card-border);
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.secondary-btn:active {
-  opacity: 0.8;
 }
 
 .log-header {

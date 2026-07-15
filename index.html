@@ -34,14 +34,13 @@
 <main>
   <form id="entry-form" class="card">
     <div class="field">
-      <button type="button" id="import-photo-btn" class="secondary-btn">📷 Fill from photo</button>
-      <input type="file" id="photo-input" accept="image/*" hidden>
-      <p id="photo-status" class="hint"></p>
-    </div>
-
-    <div class="field">
-      <label for="datetime">Date &amp; time</label>
+      <div class="field-label-row">
+        <label for="datetime">Date &amp; time</label>
+        <button type="button" id="import-photo-btn" class="icon-btn" title="Fill date &amp; location from a photo" aria-label="Fill from photo">📷</button>
+        <input type="file" id="photo-input" accept="image/*" hidden>
+      </div>
       <input type="datetime-local" id="datetime" name="datetime" required>
+      <p id="photo-status" class="hint" hidden></p>
     </div>
 
     <div class="field">
