@@ -288,15 +288,13 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
       // Overpass unavailable — fall through to Nominatim's own match below.
     }
 
-    if (a.amenity || a.shop) {
-      locationInput.value = [a.amenity || a.shop, cityState].filter(Boolean).join(', ');
-      setLocationLine(foundLabel, [a.house_number, a.road].filter(Boolean).join(' '));
-      return;
-    }
-
+    // No fuel station found nearby, even after widening the search — this is
+    // a gas log, so don't fall back to an unrelated business Nominatim
+    // happens to know about (a salon, a cafe). A road/city name is a more
+    // honest "nothing found" than a specific but wrong business name.
     const label = [a.road, cityState].filter(Boolean).join(', ');
     locationInput.value = label || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-    setLocationLine(foundLabel, '');
+    setLocationLine('No gas station found nearby', '');
   } catch {
     locationInput.value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     setLocationLine(offlineLabel, '');
@@ -675,8 +673,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.3';
-const RELEASE_NOTES = 'Fixes a real gap: an unrelated nearby business could show up instead of the actual gas station you\'re standing at. Nearby fuel stations are now checked first, with a wider search if nothing\'s close by.';
+const APP_VERSION = '1.7.4';
+const RELEASE_NOTES = 'When no gas station is nearby, the location field now falls back to a street name instead of showing an unrelated business (e.g. a salon or cafe) that happened to be the closest tagged place.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
