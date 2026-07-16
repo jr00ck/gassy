@@ -724,8 +724,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.4';
-const RELEASE_NOTES = 'When no gas station is nearby, the location field now falls back to a street name instead of showing an unrelated business (e.g. a salon or cafe) that happened to be the closest tagged place.';
+const APP_VERSION = '1.7.5';
+const RELEASE_NOTES = 'Location lookup no longer runs automatically when the app opens — only when you tap 📍 or finish editing a field. Tapping 📍 also now shows "Locating…" right away, even if the field already had a value.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
