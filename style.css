@@ -248,6 +248,11 @@ input[readonly] {
   cursor: pointer;
 }
 
+#locate-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .hint {
   font-size: 0.78rem;
   color: var(--text-dim);

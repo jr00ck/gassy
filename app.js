@@ -32,6 +32,33 @@ const sourceField = document.getElementById('source-field');
 let editingId = null;
 let lastLocationSource = null; // 'photo' | 'gps' | 'manual' | null
 let currentLocationLabel = '';
+let isLocating = false;
+let preLocateValue = '';
+
+// Shows loading feedback directly in the location field itself (not just the
+// status line below it), so a lookup started while the field already has a
+// value is just as visible as the "Locating…" state on a fresh, empty field.
+function beginLocating() {
+  if (!isLocating) preLocateValue = locationInput.value;
+  isLocating = true;
+  locationInput.value = 'Locating…';
+  locationInput.readOnly = true;
+  locateBtn.disabled = true;
+  locationStatus.textContent = 'Locating…';
+}
+
+function endLocating() {
+  isLocating = false;
+  locationInput.readOnly = false;
+  locateBtn.disabled = false;
+}
+
+// Nothing new was found (e.g. permission denied) — put back whatever was
+// there before the lookup started instead of leaving "Locating…" stuck.
+function cancelLocating() {
+  locationInput.value = preLocateValue;
+  endLocating();
+}
 
 locationInput.addEventListener('input', () => {
   lastLocationSource = 'manual';
@@ -236,10 +263,10 @@ function renderNearbyStations(stations, cityState) {
 }
 
 async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
+  beginLocating();
   locationInput.dataset.lat = latitude;
   locationInput.dataset.lon = longitude;
   renderNearbyStations([]);
-  setLocationLine('', '');
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
   try {
@@ -300,15 +327,17 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
     setLocationLine(offlineLabel, '');
   } finally {
     syncAdvancedFields();
+    endLocating();
   }
 }
 
 function locate() {
+  if (isLocating) return;
   if (!('geolocation' in navigator)) {
     locationStatus.textContent = 'Geolocation not supported — enter manually';
     return;
   }
-  locationStatus.textContent = 'Locating…';
+  beginLocating();
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       lastLocationSource = 'gps';
@@ -320,6 +349,7 @@ function locate() {
       );
     },
     () => {
+      cancelLocating();
       locationStatus.textContent = 'Location unavailable — enter manually';
     },
     { enableHighAccuracy: true, timeout: 10000 }
@@ -514,7 +544,16 @@ function resetToNewEntry() {
   missingDataNotice.innerHTML = '';
   advancedPanel.hidden = true;
   mpgPreview.hidden = true;
-  locate();
+
+  // form.reset() clears the visible location text, but not the coordinate
+  // data attached to it — without lookup auto-firing on reset anymore,
+  // that stale lat/lon would otherwise silently carry over into the next entry.
+  delete locationInput.dataset.lat;
+  delete locationInput.dataset.lon;
+  lastLocationSource = null;
+  setLocationLine('', '');
+  renderNearbyStations([]);
+  syncAdvancedFields();
 }
 
 function checkMissingLocationData(entry) {
@@ -610,6 +649,19 @@ attachCurrencyInput(totalCostInput, 2);
   el.addEventListener('input', updateMpgPreview);
 });
 
+// Don't fetch location on load — only once the user shows real intent by
+// filling in a field. Skipped while editing an existing entry so touching up
+// an old fill-up never overwrites its saved location with where you are now.
+[mileageInput, priceInput, totalCostInput, datetimeInput].forEach((el) => {
+  let valueOnFocus = el.value;
+  el.addEventListener('focus', () => {
+    valueOnFocus = el.value;
+  });
+  el.addEventListener('blur', () => {
+    if (!editingId && el.value !== valueOnFocus) locate();
+  });
+});
+
 importPhotoBtn.addEventListener('click', () => photoInput.click());
 
 photoInput.addEventListener('change', async () => {
@@ -668,7 +720,6 @@ exportBtn.addEventListener('click', () => {
 });
 
 setDefaultDatetime();
-locate();
 render();
 
 // --- Version badge: shows briefly after an update was just applied ---
