@@ -1,3 +1,5 @@
+<img src="icons/icon-512.png" width="96" height="96" alt="Gassy icon">
+
 # Gassy
 
 A simple gas fill-up log PWA. Install it to your home screen on iOS, Android, or desktop to use it like a native app — works fully offline once installed.
