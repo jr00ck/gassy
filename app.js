@@ -352,6 +352,20 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
 
 function locate() {
   if (isLocating) return;
+
+  // While editing an existing entry, you're usually somewhere else entirely
+  // by the time you're fixing it up — live GPS would silently replace the
+  // fill-up's real location with wherever you are right now. Re-run the
+  // nearby-station search from the entry's already-saved coordinates instead,
+  // so the chip picker can offer a different match if the original was wrong.
+  if (editingId) {
+    const savedLat = parseFloat(locationInput.dataset.lat);
+    const savedLon = parseFloat(locationInput.dataset.lon);
+    if (isFinite(savedLat) && isFinite(savedLon)) {
+      return reverseGeocode(savedLat, savedLon, 'Saved location', 'Saved location (offline — coordinates only)');
+    }
+  }
+
   if (!('geolocation' in navigator)) {
     locationStatus.textContent = 'Geolocation not supported — enter manually';
     return;
@@ -746,8 +760,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.7';
-const RELEASE_NOTES = 'Fixed the price/gallon in the log list rounding up (e.g. $3.99 showing as $4.00). Also widened the nearby-station search to catch stations mapped as an area in OpenStreetMap, not just as a point.';
+const APP_VERSION = '1.7.8';
+const RELEASE_NOTES = 'Editing an entry and tapping 📍 now re-checks nearby stations from that fill-up\'s saved location instead of your current position — so you can pick a different nearby match without your live location overwriting the saved one.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
