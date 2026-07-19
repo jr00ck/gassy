@@ -150,6 +150,14 @@ function fmtMoney(n) {
   return '$' + Number(n).toFixed(2);
 }
 
+// Prices are stored with the trailing 9/10-cent digit (e.g. 3.999 for a
+// pump price of $3.99), so a plain .toFixed(2) rounds 3.999 up to $4.00.
+// Truncate that last digit instead of rounding, matching how the edit form
+// already reconstructs the entered price (see loadEntryIntoForm).
+function fmtPricePerGallon(n) {
+  return '$' + Number(n).toFixed(3).slice(0, -1);
+}
+
 // Place names come from crowd-sourced OSM data (or free-typed text) and get
 // interpolated into innerHTML in the entries list — escape before rendering.
 function escapeHtml(str) {
@@ -198,17 +206,26 @@ function fmtDistance(meters) {
 }
 
 async function findNearbyFuelStations(lat, lon, radiusMeters) {
-  const query = `[out:json][timeout:8];node["amenity"="fuel"](around:${radiusMeters},${lat},${lon});out body;`;
+  // Larger stations (travel centers, big-box fuel plazas) are often mapped in
+  // OSM as a way/relation (an area) rather than a single node — "nwr" plus
+  // "out center" covers those too, using the area's centroid as its point.
+  const query = `[out:json][timeout:8];nwr["amenity"="fuel"](around:${radiusMeters},${lat},${lon});out center;`;
   const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
   if (!res.ok) throw new Error('overpass failed');
   const data = await res.json();
   return (data.elements || [])
-    .map((el) => ({
-      name: (el.tags && (el.tags.name || el.tags.brand)) || 'Fuel station',
-      lat: el.lat,
-      lon: el.lon,
-      distance: distanceMeters(lat, lon, el.lat, el.lon),
-    }))
+    .map((el) => {
+      const elLat = el.lat ?? el.center?.lat;
+      const elLon = el.lon ?? el.center?.lon;
+      if (elLat == null || elLon == null) return null;
+      return {
+        name: (el.tags && (el.tags.name || el.tags.brand)) || 'Fuel station',
+        lat: elLat,
+        lon: elLon,
+        distance: distanceMeters(lat, lon, elLat, elLon),
+      };
+    })
+    .filter(Boolean)
     .sort((a, b) => a.distance - b.distance);
 }
 
@@ -499,7 +516,7 @@ function render() {
       </div>
       <div class="entry-details">
         <span><b>${Number(entry.mileage).toLocaleString()}</b> mi</span>
-        <span><b>${fmtMoney(entry.pricePerGallon)}</b>/gal</span>
+        <span><b>${fmtPricePerGallon(entry.pricePerGallon)}</b>/gal</span>
         <span><b>${gallons.toFixed(2)}</b> gal</span>
         ${mpg ? `<span><b>${mpg.toFixed(1)}</b> mpg</span>` : ''}
       </div>
@@ -729,8 +746,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.6';
-const RELEASE_NOTES = 'Fixed location lookup re-triggering every time you left a field, even after a location was already found — it now only looks up automatically when the location field is empty. Tapping 📍 still always refreshes it.';
+const APP_VERSION = '1.7.7';
+const RELEASE_NOTES = 'Fixed the price/gallon in the log list rounding up (e.g. $3.99 showing as $4.00). Also widened the nearby-station search to catch stations mapped as an area in OpenStreetMap, not just as a point.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
