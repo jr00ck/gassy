@@ -44,6 +44,7 @@ function beginLocating() {
   locationInput.value = 'Locating…';
   locationInput.readOnly = true;
   locateBtn.disabled = true;
+  submitBtn.disabled = true;
   locationStatus.textContent = 'Locating…';
 }
 
@@ -51,6 +52,7 @@ function endLocating() {
   isLocating = false;
   locationInput.readOnly = false;
   locateBtn.disabled = false;
+  submitBtn.disabled = false;
 }
 
 // Nothing new was found (e.g. permission denied) — put back whatever was
@@ -652,13 +654,16 @@ attachCurrencyInput(totalCostInput, 2);
 // Don't fetch location on load — only once the user shows real intent by
 // filling in a field. Skipped while editing an existing entry so touching up
 // an old fill-up never overwrites its saved location with where you are now.
+// Also skipped once the location field already has a value, so tabbing
+// through the rest of the form after the first lookup fills it in doesn't
+// keep re-triggering (and re-showing "Locating…") on every later field.
 [mileageInput, priceInput, totalCostInput, datetimeInput].forEach((el) => {
   let valueOnFocus = el.value;
   el.addEventListener('focus', () => {
     valueOnFocus = el.value;
   });
   el.addEventListener('blur', () => {
-    if (!editingId && el.value !== valueOnFocus) locate();
+    if (!editingId && el.value !== valueOnFocus && !locationInput.value.trim()) locate();
   });
 });
 
@@ -724,8 +729,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.5';
-const RELEASE_NOTES = 'Location lookup no longer runs automatically when the app opens — only when you tap 📍 or finish editing a field. Tapping 📍 also now shows "Locating…" right away, even if the field already had a value.';
+const APP_VERSION = '1.7.6';
+const RELEASE_NOTES = 'Fixed location lookup re-triggering every time you left a field, even after a location was already found — it now only looks up automatically when the location field is empty. Tapping 📍 still always refreshes it.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
