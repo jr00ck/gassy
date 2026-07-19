@@ -729,8 +729,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.5';
-const RELEASE_NOTES = 'Location lookup no longer runs automatically when the app opens — only when you tap 📍 or finish editing a field. Tapping 📍 also now shows "Locating…" right away, even if the field already had a value.';
+const APP_VERSION = '1.7.6';
+const RELEASE_NOTES = 'Fixed location lookup re-triggering every time you left a field, even after a location was already found — it now only looks up automatically when the location field is empty. Tapping 📍 still always refreshes it.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
