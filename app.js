@@ -914,6 +914,7 @@ exportBtn.addEventListener('click', () => {
 });
 
 setDefaultDatetime();
+applyPredictedPlaceholders();
 render();
 
 // --- Version badge: shows briefly after an update was just applied ---
