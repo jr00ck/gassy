@@ -6,6 +6,7 @@ const mileageInput = document.getElementById('mileage');
 const priceInput = document.getElementById('pricePerGallon');
 const totalCostInput = document.getElementById('totalCost');
 const mpgPreview = document.getElementById('mpg-preview');
+const mileageBoundsWarning = document.getElementById('mileage-bounds-warning');
 const locationInput = document.getElementById('location');
 const locationStatus = document.getElementById('location-status');
 const locateBtn = document.getElementById('locate-btn');
@@ -34,6 +35,15 @@ let lastLocationSource = null; // 'photo' | 'gps' | 'manual' | null
 let currentLocationLabel = '';
 let isLocating = false;
 let preLocateValue = '';
+
+// Base prediction for the fill-up being started (mileage/price/total), or
+// null when there isn't enough history yet. Recomputed each time a new-entry
+// form is set up; never used while editing an existing entry.
+let currentPredictions = null;
+// Total-cost guess, kept in sync with whatever mileage/price the user has
+// actually typed so far — sharper than currentPredictions.totalCost once
+// either of those fields has real input.
+let currentTotalGuess = null;
 
 // Shows loading feedback directly in the location field itself (not just the
 // status line below it), so a lookup started while the field already has a
@@ -510,6 +520,100 @@ function calcMpg(mileage, gallons, prevMileage) {
   return (mileage - prevMileage) / gallons;
 }
 
+// Guesses mileage/price/total for a fresh fill-up from history, so the form's
+// placeholders can show a live prediction instead of a generic example.
+// Returns null until there's at least one completed interval between two
+// prior entries to learn from.
+//
+// - predicted mileage = previous odometer + the usual distance between
+//   fill-ups, clamped so it can never be lower than the previous reading or
+//   higher than what a full tank could plausibly cover (avg MPG × the
+//   largest single fill-up on record, used as a stand-in for tank capacity
+//   since there's no full/partial-fill flag to read that from directly).
+// - predicted price = most recent price/gallon (about as good as a guess
+//   can get without a fuel-price feed).
+// - predicted total = predicted gallons (from the mileage guess) × predicted
+//   price — derived, not separately guessed.
+function computePredictions() {
+  const entries = loadEntries().sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+  if (entries.length < 2) return null;
+
+  const mpgs = [];
+  const intervals = [];
+  const gallonsPerFill = [];
+
+  for (let i = 1; i < entries.length; i++) {
+    const prev = entries[i - 1];
+    const cur = entries[i];
+    const gallons = cur.pricePerGallon > 0 ? cur.totalCost / cur.pricePerGallon : 0;
+    const mpg = calcMpg(cur.mileage, gallons, prev.mileage);
+    if (mpg != null) {
+      mpgs.push(mpg);
+      intervals.push(cur.mileage - prev.mileage);
+    }
+    if (gallons > 0) gallonsPerFill.push(gallons);
+  }
+
+  if (!mpgs.length || !gallonsPerFill.length) return null;
+
+  const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const avgMpg = avg(mpgs);
+  const avgIntervalMiles = avg(intervals);
+  const maxGallons = Math.max(...gallonsPerFill);
+  const lastEntry = entries[entries.length - 1];
+  const previousMileage = lastEntry.mileage;
+
+  if (!(avgMpg > 0) || !(maxGallons > 0)) return null;
+
+  const lowerBound = previousMileage;
+  const upperBound = previousMileage + avgMpg * maxGallons;
+  const mileage = Math.min(Math.max(previousMileage + avgIntervalMiles, lowerBound), upperBound);
+  const gallons = (mileage - previousMileage) / avgMpg;
+  const price = lastEntry.pricePerGallon;
+  const totalCost = gallons * price;
+
+  return { previousMileage, avgMpg, lowerBound, upperBound, mileage, price, totalCost };
+}
+
+// Non-blocking: the tank-capacity bound is a heuristic (biggest fill-up on
+// record), not a hard rule, so an unusual-but-real case just gets flagged
+// rather than stopped.
+function updateMileageBoundsWarning(mileage) {
+  if (editingId || !currentPredictions || !isFinite(mileage)) {
+    mileageBoundsWarning.hidden = true;
+    return;
+  }
+  if (mileage < currentPredictions.lowerBound) {
+    mileageBoundsWarning.hidden = false;
+    mileageBoundsWarning.textContent = `Lower than your last fill-up (${Math.round(currentPredictions.lowerBound).toLocaleString()} mi)`;
+  } else if (mileage > currentPredictions.upperBound) {
+    mileageBoundsWarning.hidden = false;
+    mileageBoundsWarning.textContent = `More than a full tank could cover (~${Math.round(currentPredictions.upperBound).toLocaleString()} mi max)`;
+  } else {
+    mileageBoundsWarning.hidden = true;
+  }
+}
+
+// Sets (or clears) the three ghost placeholders for a fresh entry. Skipped
+// entirely while editing, matching the existing pattern of not letting
+// auto-behavior touch an in-progress edit (see the GPS skip below).
+function applyPredictedPlaceholders() {
+  currentPredictions = editingId ? null : computePredictions();
+  currentTotalGuess = currentPredictions ? currentPredictions.totalCost : null;
+
+  mileageInput.placeholder = currentPredictions
+    ? `≈ ${Math.round(currentPredictions.mileage).toLocaleString()}`
+    : 'e.g. 45210';
+  priceInput.placeholder = currentPredictions
+    ? `≈${Number(currentPredictions.price).toFixed(3).slice(0, -1)}`
+    : '3.49';
+  totalCostInput.placeholder = currentPredictions
+    ? `≈${currentPredictions.totalCost.toFixed(2)}`
+    : '42.50';
+
+  updateMileageBoundsWarning(parseFloat(mileageInput.value));
+}
+
 function render() {
   const entries = loadEntries().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
   entriesList.innerHTML = '';
@@ -547,23 +651,36 @@ function updateMpgPreview() {
   const cost = parseFloat(totalCostInput.value);
   const datetime = datetimeInput.value;
 
+  // Sharpen the total-cost hint using whatever real mileage/price the user
+  // has typed so far, instead of leaving it pinned to the original guess.
+  if (!editingId && currentPredictions) {
+    const typedMileageValid = isFinite(mileage) && mileage > currentPredictions.previousMileage;
+    const effMileage = typedMileageValid ? mileage : currentPredictions.mileage;
+    const effPrice = priceInput.value.trim() !== '' && isFinite(price) ? price : currentPredictions.price;
+    const effGallons = currentPredictions.avgMpg > 0
+      ? (effMileage - currentPredictions.previousMileage) / currentPredictions.avgMpg
+      : 0;
+    currentTotalGuess = effGallons * effPrice;
+    totalCostInput.placeholder = `≈${currentTotalGuess.toFixed(2)}`;
+  }
+
   if (!datetime || !isFinite(mileage) || !isFinite(price) || !isFinite(cost) || price <= 0) {
     mpgPreview.hidden = true;
-    return;
+  } else {
+    const gallons = cost / price;
+    const prev = findPreviousEntry(datetime, editingId);
+    const mpg = calcMpg(mileage, gallons, prev && prev.mileage);
+
+    if (mpg == null) {
+      mpgPreview.hidden = true;
+    } else {
+      const milesTraveled = mileage - prev.mileage;
+      mpgPreview.hidden = false;
+      mpgPreview.textContent = `≈ ${mpg.toFixed(1)} MPG over ${milesTraveled.toLocaleString()} mi / ${gallons.toFixed(2)} gal since last fill-up`;
+    }
   }
 
-  const gallons = cost / price;
-  const prev = findPreviousEntry(datetime, editingId);
-  const mpg = calcMpg(mileage, gallons, prev && prev.mileage);
-
-  if (mpg == null) {
-    mpgPreview.hidden = true;
-    return;
-  }
-
-  const milesTraveled = mileage - prev.mileage;
-  mpgPreview.hidden = false;
-  mpgPreview.textContent = `≈ ${mpg.toFixed(1)} MPG over ${milesTraveled.toLocaleString()} mi / ${gallons.toFixed(2)} gal since last fill-up`;
+  updateMileageBoundsWarning(mileage);
 }
 
 function resetToNewEntry() {
@@ -577,6 +694,7 @@ function resetToNewEntry() {
   missingDataNotice.innerHTML = '';
   advancedPanel.hidden = true;
   mpgPreview.hidden = true;
+  applyPredictedPlaceholders();
 
   // form.reset() clears the visible location text, but not the coordinate
   // data attached to it — without lookup auto-firing on reset anymore,
@@ -602,6 +720,12 @@ function checkMissingLocationData(entry) {
 
 async function loadEntryIntoForm(entry) {
   editingId = entry.id;
+  currentPredictions = null;
+  currentTotalGuess = null;
+  mileageInput.placeholder = 'e.g. 45210';
+  priceInput.placeholder = '3.49';
+  totalCostInput.placeholder = '42.50';
+  mileageBoundsWarning.hidden = true;
   datetimeInput.value = entry.datetime;
   mileageInput.value = entry.mileage;
   priceInput.value = entry.pricePerGallon.toFixed(3).slice(0, -1);
@@ -631,6 +755,22 @@ async function loadEntryIntoForm(entry) {
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
+
+  // Ghost placeholders are never submitted by the browser — leaving one of
+  // these blank because the guess looked right means committing that guess
+  // now, right before validating.
+  if (!editingId && currentPredictions) {
+    if (mileageInput.value.trim() === '') mileageInput.value = Math.round(currentPredictions.mileage);
+    if (priceInput.value.trim() === '') priceInput.value = Number(currentPredictions.price).toFixed(3).slice(0, -1);
+    if (totalCostInput.value.trim() === '' && currentTotalGuess != null) totalCostInput.value = currentTotalGuess.toFixed(2);
+  }
+
+  if (!datetimeInput.value || mileageInput.value.trim() === '' || priceInput.value.trim() === '' || totalCostInput.value.trim() === '') {
+    missingDataNotice.hidden = false;
+    missingDataNotice.textContent = 'Please fill in date, mileage, price/gallon, and total cost.';
+    return;
+  }
+
   const entries = loadEntries();
   const data = {
     datetime: datetimeInput.value,
@@ -698,6 +838,24 @@ attachCurrencyInput(totalCostInput, 2);
   });
 });
 
+// If a predicted value was left untouched, commit it the moment the field is
+// left — the same "accept the hint" moment as tabbing past it, rather than
+// waiting until the whole form is submitted.
+[
+  [mileageInput, () => (currentPredictions ? String(Math.round(currentPredictions.mileage)) : null)],
+  [priceInput, () => (currentPredictions ? Number(currentPredictions.price).toFixed(3).slice(0, -1) : null)],
+  [totalCostInput, () => (currentTotalGuess != null ? currentTotalGuess.toFixed(2) : null)],
+].forEach(([input, guessFor]) => {
+  input.addEventListener('blur', () => {
+    if (editingId || input.value.trim() !== '') return;
+    const guess = guessFor();
+    if (guess != null) {
+      input.value = guess;
+      updateMpgPreview();
+    }
+  });
+});
+
 importPhotoBtn.addEventListener('click', () => photoInput.click());
 
 photoInput.addEventListener('change', async () => {
@@ -760,8 +918,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.7.8';
-const RELEASE_NOTES = 'Editing an entry and tapping 📍 now re-checks nearby stations from that fill-up\'s saved location instead of your current position — so you can pick a different nearby match without your live location overwriting the saved one.';
+const APP_VERSION = '1.8.0';
+const RELEASE_NOTES = 'Mileage, price/gallon, and total cost now show a live predicted value (based on your fill-up history) as a placeholder instead of a generic example. Leave a field blank to accept the guess, or type over it — the total-cost guess updates as you go, and mileage gets a heads-up if it looks too low or higher than a full tank could cover.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
