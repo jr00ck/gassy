@@ -13,6 +13,7 @@ const locateBtn = document.getElementById('locate-btn');
 const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
 const exportBtn = document.getElementById('export-btn');
+const storageUsageEl = document.getElementById('storage-usage');
 const importPhotoBtn = document.getElementById('import-photo-btn');
 const photoInput = document.getElementById('photo-input');
 const photoStatus = document.getElementById('photo-status');
@@ -158,6 +159,24 @@ function fmtDate(iso) {
 
 function fmtMoney(n) {
   return '$' + Number(n).toFixed(2);
+}
+
+function fmtBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// localStorage strings are stored as UTF-16 (2 bytes/char) — this is an
+// estimate of on-device footprint, not an exact browser-reported figure
+// (no such API exists), but close enough to be informational.
+function updateStorageUsageBadge() {
+  let chars = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    chars += key.length + (localStorage.getItem(key) || '').length;
+  }
+  storageUsageEl.textContent = `${fmtBytes(chars * 2)} on device`;
 }
 
 // Prices are stored with the trailing 9/10-cent digit (e.g. 3.999 for a
@@ -618,6 +637,7 @@ function render() {
   const entries = loadEntries().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
   entriesList.innerHTML = '';
   emptyState.style.display = entries.length ? 'none' : 'block';
+  updateStorageUsageBadge();
 
   entries.forEach((entry) => {
     const prev = findPreviousEntry(entry.datetime, entry.id);
@@ -755,22 +775,6 @@ async function loadEntryIntoForm(entry) {
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-
-  // Ghost placeholders are never submitted by the browser — leaving one of
-  // these blank because the guess looked right means committing that guess
-  // now, right before validating.
-  if (!editingId && currentPredictions) {
-    if (mileageInput.value.trim() === '') mileageInput.value = Math.round(currentPredictions.mileage);
-    if (priceInput.value.trim() === '') priceInput.value = Number(currentPredictions.price).toFixed(3).slice(0, -1);
-    if (totalCostInput.value.trim() === '' && currentTotalGuess != null) totalCostInput.value = currentTotalGuess.toFixed(2);
-  }
-
-  if (!datetimeInput.value || mileageInput.value.trim() === '' || priceInput.value.trim() === '' || totalCostInput.value.trim() === '') {
-    missingDataNotice.hidden = false;
-    missingDataNotice.textContent = 'Please fill in date, mileage, price/gallon, and total cost.';
-    return;
-  }
-
   const entries = loadEntries();
   const data = {
     datetime: datetimeInput.value,
@@ -835,24 +839,6 @@ attachCurrencyInput(totalCostInput, 2);
   });
   el.addEventListener('blur', () => {
     if (!editingId && el.value !== valueOnFocus && !locationInput.value.trim()) locate();
-  });
-});
-
-// If a predicted value was left untouched, commit it the moment the field is
-// left — the same "accept the hint" moment as tabbing past it, rather than
-// waiting until the whole form is submitted.
-[
-  [mileageInput, () => (currentPredictions ? String(Math.round(currentPredictions.mileage)) : null)],
-  [priceInput, () => (currentPredictions ? Number(currentPredictions.price).toFixed(3).slice(0, -1) : null)],
-  [totalCostInput, () => (currentTotalGuess != null ? currentTotalGuess.toFixed(2) : null)],
-].forEach(([input, guessFor]) => {
-  input.addEventListener('blur', () => {
-    if (editingId || input.value.trim() !== '') return;
-    const guess = guessFor();
-    if (guess != null) {
-      input.value = guess;
-      updateMpgPreview();
-    }
   });
 });
 
