@@ -80,7 +80,7 @@
 
     <div class="field">
       <label for="mileage">Mileage (odometer)</label>
-      <input type="number" id="mileage" name="mileage" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 45210">
+      <input type="number" id="mileage" name="mileage" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 45210" required>
       <p id="mpg-preview" class="hint" hidden></p>
       <p id="mileage-bounds-warning" class="hint" hidden></p>
     </div>
@@ -89,14 +89,14 @@
       <div class="field">
         <label for="pricePerGallon">Price / gallon</label>
         <div class="price-input-row">
-          <input type="text" id="pricePerGallon" name="pricePerGallon" inputmode="numeric" placeholder="3.49">
+          <input type="text" id="pricePerGallon" name="pricePerGallon" inputmode="numeric" placeholder="3.49" required>
           <span class="price-suffix" aria-hidden="true">9</span>
         </div>
       </div>
 
       <div class="field">
         <label for="totalCost">Total cost</label>
-        <input type="text" id="totalCost" name="totalCost" inputmode="numeric" placeholder="42.50">
+        <input type="text" id="totalCost" name="totalCost" inputmode="numeric" placeholder="42.50" required>
       </div>
     </div>
 
@@ -126,6 +126,7 @@
 
   <footer class="app-footer">
     <span class="app-footer-version" id="app-version"></span>
+    <span class="app-footer-version" id="storage-usage"></span>
   </footer>
 </main>
 
