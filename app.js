@@ -905,8 +905,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.8.0';
-const RELEASE_NOTES = 'Mileage, price/gallon, and total cost now show a live predicted value (based on your fill-up history) as a placeholder instead of a generic example. Leave a field blank to accept the guess, or type over it — the total-cost guess updates as you go, and mileage gets a heads-up if it looks too low or higher than a full tank could cover.';
+const APP_VERSION = '1.9.0';
+const RELEASE_NOTES = 'Mileage, price/gallon, and total cost placeholders now show a predicted value (based on your fill-up history) instead of a generic example — purely a hint, so it never gets saved unless you type it in yourself. The footer also now shows roughly how much on-device storage the log is using.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
