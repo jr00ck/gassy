@@ -10,7 +10,7 @@ Statuses: `done` · `in progress` · `todo`
 - [x] **done** — Fix date/time field not moving down when the Advanced (⚙) panel expands
 - [x] **done** — Delete merged remote branches `claude/session-agzzje` and `claude/location-lookup-triggers-3yyjix`
 - [x] **done** — Opened release PR [#8](https://github.com/jr00ck/gassy/pull/8) (`fix/reliability-quick-wins` → `main`, app bumped to 1.10.0)
-- [ ] **in progress** — Merge PR #8, tag `v1.10.0`, create the GitHub release so Pages deploys, then delete the feature branch
+- [x] **done** — Merged PR #8, tagged `v1.10.0`, published the GitHub release, deleted `fix/reliability-quick-wins`
 
 ## Product backlog
 
