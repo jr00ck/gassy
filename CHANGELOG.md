@@ -4,7 +4,7 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
-## [unreleased]
+## [1.14.0] - 2026-10-08
 
 ### Features
 
@@ -15,6 +15,7 @@ Generated with [git-cliff](https://git-cliff.org); keep commits conventional whe
 - Tighten price chart average label spacing
 - Stop auto-locate on blur and dedupe Locating UX
 - One-shot auto-locate on new fill-up; Miles under MPG
+- Respect longest fill interval; show avg MPG in log summaries
 ## [1.13.0] - 2026-10-08
 
 ### Features
