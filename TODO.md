@@ -13,7 +13,7 @@ makes a feature clearer.
 - Live MPG preview while you fill out the form
 - Predicted mileage / price / total as ghost placeholders (hints only)
 - Fill from photo (JPEG EXIF date + GPS)
-- Nearby gas-station lookup with tappable alternatives
+- Nearby gas-station lookup — auto-fills only when a station is truly close; farther matches stay as tappable suggestions with an empty field + “none nearby”
 - CSV export of the full log (down near the footer)
 - Pull down to refresh for app updates, with a ✓ Updated badge that shows what's new as a short bullet list
 - Changelog tooling: Conventional Commits + [git-cliff](https://git-cliff.org) (`npm run changelog` → `CHANGELOG.md`)

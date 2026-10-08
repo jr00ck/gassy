@@ -79,10 +79,30 @@ function setCollapsibleOpen(panel, open) {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => panel.classList.add('is-open'));
     });
-  } else {
+    return;
+  }
+
+  // Match month expand/collapse: animate to 0fr, then hide (instant hide felt broken).
+  if (prefersReducedMotion() || !panel.classList.contains('is-open') || panel.hidden) {
     panel.classList.remove('is-open');
     panel.hidden = true;
+    return;
   }
+
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    panel.hidden = true;
+    panel.removeEventListener('transitionend', onEnd);
+  };
+  const onEnd = (e) => {
+    if (e.target !== panel) return;
+    finish();
+  };
+  panel.addEventListener('transitionend', onEnd);
+  panel.classList.remove('is-open');
+  setTimeout(finish, 280);
 }
 
 // Shows loading feedback directly in the location field itself (not just the
@@ -320,18 +340,21 @@ async function findNearbyFuelStations(lat, lon, radiusMeters) {
   return unique;
 }
 
-// Meters. Tight pass covers a station's footprint plus realistic GPS drift;
-// the wide pass only kicks in if that comes up empty, so a sparser area
-// still finds "the" nearest station instead of falling back to a road name.
+// Meters. Auto-fill only within the tight radius (station footprint + GPS drift).
+// The wide pass is for tappable suggestions only — never silently fill a station
+// ~0.6 mi away just because Overpass found something in the neighborhood.
 const FUEL_SEARCH_RADIUS_M = 150;
 const FUEL_SEARCH_RADIUS_WIDE_M = 1000;
 
 async function findNearbyFuelStationsExpanding(lat, lon) {
-  for (const radius of [FUEL_SEARCH_RADIUS_M, FUEL_SEARCH_RADIUS_WIDE_M]) {
-    const stations = await findNearbyFuelStations(lat, lon, radius);
-    if (stations.length) return { stations, radius };
-  }
-  return { stations: [], radius: null };
+  // One wide query, then split: close enough to auto-fill vs farther suggestions.
+  const stations = await findNearbyFuelStations(lat, lon, FUEL_SEARCH_RADIUS_WIDE_M);
+  const nearby = stations.filter((s) => s.distance <= FUEL_SEARCH_RADIUS_M);
+  return {
+    stations,
+    nearby,
+    autoFill: nearby.length > 0,
+  };
 }
 
 async function fetchStreetAddress(lat, lon) {
@@ -368,7 +391,7 @@ function renderNearbyStations(stations, cityState) {
       missingDataNotice.hidden = true;
       const address = await fetchStreetAddress(s.lat, s.lon);
       if (generation !== locateGeneration) return;
-      setLocationLine(currentLocationLabel, address);
+      setLocationLine('Selected station', address);
       syncAdvancedFields();
     });
     nearbyStationsEl.appendChild(chip);
@@ -408,46 +431,49 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
       return;
     }
 
-    // This is a gas log, so a nearby fuel station always takes priority over
-    // whatever non-fuel business Nominatim's own point happens to snap to —
-    // otherwise an unrelated nearby business (a cafe, a shop) could get
-    // shown instead of the actual station you're standing at.
+    // Prefer a truly nearby fuel station over whatever non-fuel POI Nominatim
+    // snapped to. Farther stations are offered as chips only — never auto-filled.
     try {
-      const { stations, radius } = await findNearbyFuelStationsExpanding(latitude, longitude);
+      const { stations, nearby, autoFill } = await findNearbyFuelStationsExpanding(latitude, longitude);
       if (stale()) return;
-      if (stations.length) {
-        const best = stations[0];
+      if (autoFill) {
+        const best = nearby[0];
         locationInput.value = [best.name, cityState].filter(Boolean).join(', ');
         locationInput.dataset.lat = best.lat;
         locationInput.dataset.lon = best.lon;
-        // Nominatim allows about one request per second. The station we just
-        // picked is the place we already geocoded, so reuse that street
-        // instead of firing a second reverse lookup immediately.
-        let address = best.distance <= 80 && street
+        // Nominatim allows about one request per second. Reuse the street we
+        // already have when the pick is essentially the same place.
+        const address = best.distance <= 80 && street
           ? street
           : await fetchStreetAddress(best.lat, best.lon);
         if (stale()) return;
-        // The wide-net pass found nothing close by — flag the distance so a
-        // lone, possibly-imprecise match isn't shown with false confidence.
-        if (radius > FUEL_SEARCH_RADIUS_M) {
-          address = [address, `${fmtDistance(best.distance)} away`].filter(Boolean).join(' · ');
-        }
         setLocationLine(foundLabel, address);
         if (stations.length > 1) renderNearbyStations(stations, cityState);
         return;
       }
+
+      // Nothing within the tight radius — leave the field empty (don't invent a
+      // road name or a distant station) and offer any wider matches as taps.
+      locationInput.value = '';
+      // Keep the live GPS point on the entry even when no station name stuck.
+      locationInput.dataset.lat = latitude;
+      locationInput.dataset.lon = longitude;
+      setLocationLine(
+        'No gas station found nearby',
+        stations.length ? 'Tap a suggestion below if one looks right' : ''
+      );
+      renderNearbyStations(stations, cityState);
+      return;
     } catch {
-      // Overpass unavailable — fall through to Nominatim's own match below.
+      // Overpass unavailable — fall through to a coordinate/offline fallback.
       if (stale()) return;
     }
 
-    // No fuel station found nearby, even after widening the search — this is
-    // a gas log, so don't fall back to an unrelated business Nominatim
-    // happens to know about (a salon, a cafe). A road/city name is a more
-    // honest "nothing found" than a specific but wrong business name.
-    const label = [a.road, cityState].filter(Boolean).join(', ');
-    locationInput.value = label || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+    locationInput.value = '';
+    locationInput.dataset.lat = latitude;
+    locationInput.dataset.lon = longitude;
     setLocationLine('No gas station found nearby', '');
+    renderNearbyStations([]);
   } catch {
     if (stale()) return;
     locationInput.value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
@@ -1283,14 +1309,13 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.12.1';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Fill-up history starts collapsed for at-a-glance month summaries; tap a month to expand',
-  'New fill-ups slide into an opened month with a short highlight so you can confirm what you just logged',
-  'Month headers read as real section headers when open; Export CSV moved to the bottom',
-  'Portrait lock uses the installed-app manifest again (home screen / Add to Home Screen on iOS)',
+  'Location lookup only auto-fills a station when it\'s truly nearby; farther matches stay as tappable suggestions with an empty field',
+  'Advanced and What\'s new collapse with the same smooth animation as month groups',
+  'Pull-to-refresh also re-fetches the web manifest (portrait lock on iOS still needs Delete App → re-Add after Export CSV)',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
@@ -1399,6 +1424,16 @@ async function triggerPullRefresh() {
   }
 
   try {
+    // Bust-cache the shell assets (incl. manifest) before reload. On iOS, a
+    // new orientation in the manifest still usually needs Delete App →
+    // re-Add to Home Screen — pull-to-refresh alone won't re-apply that.
+    await Promise.allSettled([
+      fetch('manifest.webmanifest', { cache: 'reload' }),
+      fetch('index.html', { cache: 'reload' }),
+      fetch('app.js', { cache: 'reload' }),
+      fetch('style.css', { cache: 'reload' }),
+      fetch('sw.js', { cache: 'reload' }),
+    ]);
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) {

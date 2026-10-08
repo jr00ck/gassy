@@ -1,4 +1,4 @@
-const CACHE = 'gassy-v1';
+const CACHE = 'gassy-v1.12.1';
 const ASSETS = [
   './',
   './index.html',

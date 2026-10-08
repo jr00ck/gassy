@@ -92,10 +92,13 @@ body {
   background: var(--card);
   border: 1px solid var(--card-border);
   border-radius: 12px;
-  padding: 12px 14px;
   font-size: 0.82rem;
   color: var(--text-dim);
   line-height: 1.45;
+}
+
+.whats-new > .collapse-inner {
+  padding: 12px 14px;
 }
 
 /* Height animation for expand/collapse panels (months, Advanced, What's new). */
@@ -376,7 +379,7 @@ input[readonly] {
   margin-bottom: 10px;
 }
 
-.advanced-panel.is-open {
+.advanced-panel > .collapse-inner {
   padding: 14px;
 }
 
