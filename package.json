@@ -1,7 +1,7 @@
 {
   "name": "gassy",
   "private": true,
-  "version": "1.12.1",
+  "version": "1.13.0",
   "description": "Gas fill-up log PWA",
   "scripts": {
     "test": "node --test test/app.test.mjs",

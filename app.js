@@ -14,6 +14,9 @@ const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
 const logMeta = document.getElementById('log-meta');
 const exportBtn = document.getElementById('export-btn');
+const importBtn = document.getElementById('import-btn');
+const importCsvInput = document.getElementById('import-csv-input');
+const importStatus = document.getElementById('import-status');
 const mpgTrendEl = document.getElementById('mpg-trend');
 const mpgTrendAvgEl = document.getElementById('mpg-trend-avg');
 const mpgTrendChartEl = document.getElementById('mpg-trend-chart');
@@ -1284,6 +1287,141 @@ function csvField(value) {
   return s;
 }
 
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  const src = String(text).replace(/^\uFEFF/, '');
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    const next = src[i + 1];
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        field += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field);
+      field = '';
+    } else if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else if (ch === '\r') {
+      // Ignore; \r\n handled when \n arrives. Lone \r treated as newline.
+      if (next !== '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      }
+    } else {
+      field += ch;
+    }
+  }
+  if (field.length || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((cell) => String(cell).trim() !== ''));
+}
+
+function stripCsvFormulaGuard(value) {
+  const s = String(value ?? '');
+  return /^'[=+\-@]/.test(s) ? s.slice(1) : s;
+}
+
+function newEntryId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+// Parses a Gassy CSV export (or compatible) into entry objects. Throws a
+// human-readable Error when the file isn't usable.
+function entriesFromCsv(text) {
+  const rows = parseCsv(text);
+  if (rows.length < 2) throw new Error('This CSV has no fill-up rows.');
+
+  const header = rows[0].map((h) => String(h).trim().toLowerCase());
+  const col = (...names) => {
+    for (const name of names) {
+      const i = header.indexOf(name);
+      if (i !== -1) return i;
+    }
+    return -1;
+  };
+  const iDatetime = col('datetime', 'date', 'date_time');
+  const iMileage = col('mileage', 'odometer', 'miles');
+  const iPrice = col('price_per_gallon', 'price/gallon', 'ppg', 'price');
+  const iTotal = col('total_cost', 'total', 'cost');
+  const iLocation = col('location', 'station', 'place');
+  const iLat = col('latitude', 'lat');
+  const iLon = col('longitude', 'lon', 'lng');
+
+  if (iDatetime < 0 || iMileage < 0 || iPrice < 0 || iTotal < 0) {
+    throw new Error('CSV header must include datetime, mileage, price_per_gallon, and total_cost.');
+  }
+
+  const entries = [];
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    const datetimeRaw = String(cells[iDatetime] ?? '').trim();
+    // Accept "YYYY-MM-DDTHH:MM" or a value Excel mangled with seconds.
+    const datetime = datetimeRaw.replace(' ', 'T').slice(0, 16);
+    const mileage = parseFloat(cells[iMileage]);
+    const pricePerGallon = parseFloat(cells[iPrice]);
+    const totalCost = parseFloat(cells[iTotal]);
+    if (!datetime || Number.isNaN(new Date(datetime).getTime())) {
+      throw new Error(`Row ${r + 1}: missing or invalid datetime.`);
+    }
+    if (!isFinite(mileage) || mileage < 0) throw new Error(`Row ${r + 1}: invalid mileage.`);
+    if (!isFinite(pricePerGallon) || pricePerGallon <= 0) throw new Error(`Row ${r + 1}: invalid price.`);
+    if (!isFinite(totalCost) || totalCost < 0) throw new Error(`Row ${r + 1}: invalid total cost.`);
+
+    let location = iLocation >= 0 ? stripCsvFormulaGuard(cells[iLocation] ?? '').trim() : '';
+    const latRaw = iLat >= 0 ? String(cells[iLat] ?? '').trim() : '';
+    const lonRaw = iLon >= 0 ? String(cells[iLon] ?? '').trim() : '';
+    const lat = latRaw === '' ? null : parseFloat(latRaw);
+    const lon = lonRaw === '' ? null : parseFloat(lonRaw);
+    if (latRaw && !isFinite(lat)) throw new Error(`Row ${r + 1}: invalid latitude.`);
+    if (lonRaw && !isFinite(lon)) throw new Error(`Row ${r + 1}: invalid longitude.`);
+
+    entries.push({
+      id: newEntryId() + r.toString(36),
+      datetime,
+      mileage,
+      pricePerGallon,
+      totalCost,
+      location,
+      lat: lat != null && isFinite(lat) ? lat : null,
+      lon: lon != null && isFinite(lon) ? lon : null,
+      source: null,
+    });
+  }
+  if (!entries.length) throw new Error('This CSV has no fill-up rows.');
+  return entries;
+}
+
+function setImportStatus(message, { error = false } = {}) {
+  if (!message) {
+    importStatus.hidden = true;
+    importStatus.textContent = '';
+    return;
+  }
+  importStatus.hidden = false;
+  importStatus.textContent = message;
+  importStatus.style.color = error ? 'var(--danger)' : '';
+}
+
 exportBtn.addEventListener('click', () => {
   const entries = loadEntries().sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
   if (!entries.length) return;
@@ -1301,6 +1439,62 @@ exportBtn.addEventListener('click', () => {
   a.download = `gassy-log-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+  setImportStatus('Exported — keep this file somewhere safe (e.g. Files / iCloud) before deleting the app.');
+});
+
+importBtn.addEventListener('click', () => importCsvInput.click());
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error || new Error('read failed'));
+    reader.readAsText(file);
+  });
+}
+
+importCsvInput.addEventListener('change', async () => {
+  const file = importCsvInput.files && importCsvInput.files[0];
+  importCsvInput.value = '';
+  if (!file) return;
+
+  let text;
+  try {
+    text = await readFileAsText(file);
+  } catch {
+    setImportStatus('Could not read that file.', { error: true });
+    return;
+  }
+
+  let imported;
+  try {
+    imported = entriesFromCsv(text);
+  } catch (err) {
+    setImportStatus(err && err.message ? err.message : 'Could not parse that CSV.', { error: true });
+    return;
+  }
+
+  const current = loadEntries();
+  const msg = current.length
+    ? `Replace your current log (${current.length} fill-up${current.length === 1 ? '' : 's'}) with ${imported.length} from “${file.name}”?`
+    : `Import ${imported.length} fill-up${imported.length === 1 ? '' : 's'} from “${file.name}”?`;
+  if (!confirm(msg)) {
+    setImportStatus('Import cancelled.');
+    return;
+  }
+
+  try {
+    saveEntries(imported);
+  } catch {
+    setImportStatus('Could not save the imported log — device storage is full.', { error: true });
+    return;
+  }
+
+  monthOpenOverrides.clear();
+  revealEntryId = null;
+  resetToNewEntry();
+  render();
+  setImportStatus(`Restored ${imported.length} fill-up${imported.length === 1 ? '' : 's'} from CSV.`);
 });
 
 setDefaultDatetime();
@@ -1309,13 +1503,12 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.12.1';
+const APP_VERSION = '1.13.0';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Location lookup only auto-fills a station when it\'s truly nearby; farther matches stay as tappable suggestions with an empty field',
-  'Advanced and What\'s new collapse with the same smooth animation as month groups',
-  'Pull-to-refresh also re-fetches the web manifest (portrait lock on iOS still needs Delete App → re-Add after Export CSV)',
+  'Import CSV next to Export — restore a backup after reinstalling the home-screen app (or anytime)',
+  'Export reminds you to keep the file safe before deleting the app on iOS',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
