@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.14.1', () => {
+test('boots without errors and shows v1.14.2', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.14.1');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.14.2');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,7 +69,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.1/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.2/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 1);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -295,25 +295,48 @@ test('cancelling edit during a lookup ignores the late result', async () => {
   assert.equal(d.getElementById('submit-btn').disabled, false);
 });
 
-test('field blur does not auto-run location lookup', async () => {
+test('auto-locates once when starting a new fill-up, not again on later blurs', async () => {
   const { d, w } = boot();
   let gpsCalled = 0;
   w.navigator.geolocation = {
-    getCurrentPosition() { gpsCalled += 1; },
+    getCurrentPosition(_success, error) {
+      gpsCalled += 1;
+      // Finish the attempt so later pin taps aren't blocked by isLocating.
+      error({ code: 1, message: 'denied' });
+    },
   };
-  d.getElementById('mileage').value = '10000';
-  d.getElementById('mileage').dispatchEvent(new w.Event('blur', { bubbles: true }));
-  d.getElementById('pricePerGallon').value = '3.49';
-  d.getElementById('pricePerGallon').dispatchEvent(new w.Event('blur', { bubbles: true }));
-  d.getElementById('totalCost').value = '40.00';
-  d.getElementById('totalCost').dispatchEvent(new w.Event('blur', { bubbles: true }));
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(gpsCalled, 0);
-  assert.equal(d.getElementById('location-status').textContent, '');
 
-  d.getElementById('locate-btn').click();
+  // App open / untouched form should not locate.
+  assert.equal(gpsCalled, 0);
+
+  const mileage = d.getElementById('mileage');
+  mileage.focus();
+  mileage.value = '10000';
+  mileage.dispatchEvent(new w.Event('blur', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
   assert.equal(gpsCalled, 1);
-  assert.match(d.getElementById('location-status').textContent, /Locating/);
+  assert.match(d.getElementById('location-status').textContent, /unavailable|manually/i);
+
+  // Later field edits must not re-fire, even while location is still empty.
+  const price = d.getElementById('pricePerGallon');
+  price.focus();
+  price.value = '3.49';
+  price.dispatchEvent(new w.Event('blur', { bubbles: true }));
+  const total = d.getElementById('totalCost');
+  total.focus();
+  total.value = '40.00';
+  total.dispatchEvent(new w.Event('blur', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(gpsCalled, 1);
+
+  // Manual pin still works after the one-shot auto attempt.
+  d.getElementById('locate-btn').click();
+  assert.equal(gpsCalled, 2);
+});
+
+test('Trends charts list Miles directly under MPG', () => {
+  const order = [...html.matchAll(/id="(chart-(?:mpg|miles|price))"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['chart-mpg', 'chart-miles', 'chart-price']);
 });
 
 test('failed lookup recovers instead of staying stuck', async () => {

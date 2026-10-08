@@ -59,6 +59,9 @@ let preLocateValue = '';
 // Bumped when the form is reset or a different entry is loaded, so an
 // in-flight lookup can't write its result into whatever is on screen now.
 let locateGeneration = 0;
+// One automatic GPS lookup per new-entry form session (first field edit).
+// Manual 📍 / photo import still work anytime; we never re-fire on later blurs.
+let autoLocateAttempted = false;
 
 // Base prediction for the fill-up being started (mileage/price/total), or
 // null when there isn't enough history yet. Recomputed each time a new-entry
@@ -1212,6 +1215,7 @@ function resetToNewEntry() {
   locateGeneration++;
   if (isLocating) endLocating();
   editingId = null;
+  autoLocateAttempted = false;
   form.reset();
   setDefaultDatetime();
   submitBtn.textContent = 'Add fill-up';
@@ -1226,8 +1230,8 @@ function resetToNewEntry() {
   applyPredictedPlaceholders();
 
   // form.reset() clears the visible location text, but not the coordinate
-  // data attached to it — without lookup auto-firing on reset anymore,
-  // that stale lat/lon would otherwise silently carry over into the next entry.
+  // data attached to it — without that wipe, stale lat/lon would silently
+  // carry over into the next entry.
   delete locationInput.dataset.lat;
   delete locationInput.dataset.lon;
   lastLocationSource = null;
@@ -1252,6 +1256,8 @@ async function loadEntryIntoForm(entry) {
   if (isLocating) endLocating();
   const generation = locateGeneration;
   editingId = entry.id;
+  // Editing never auto-locates; pin/photo remain available.
+  autoLocateAttempted = true;
   currentPredictions = null;
   currentTotalGuess = null;
   mileageInput.placeholder = 'e.g. 45210';
@@ -1356,7 +1362,10 @@ deleteEntryBtn.addEventListener('click', () => {
   render();
 });
 
-locateBtn.addEventListener('click', locate);
+locateBtn.addEventListener('click', () => {
+  autoLocateAttempted = true;
+  locate();
+});
 
 attachCurrencyInput(priceInput, 2);
 attachCurrencyInput(totalCostInput, 2);
@@ -1365,9 +1374,28 @@ attachCurrencyInput(totalCostInput, 2);
   el.addEventListener('input', updateMpgPreview);
 });
 
-// Location lookup is explicit only: tap 📍 (or fill from a photo under
-// Advanced). Auto-running on every field blur re-fired after failed or
-// empty-result lookups and felt spammy while filling out an entry.
+// Auto-locate once when the user starts filling a *new* entry — not on app
+// open, not while editing, and never again on later field blurs. Manual 📍
+// and photo import still work anytime.
+function maybeAutoLocate() {
+  if (editingId || autoLocateAttempted || isLocating) return;
+  if (locationInput.value.trim()) {
+    autoLocateAttempted = true;
+    return;
+  }
+  autoLocateAttempted = true;
+  locate();
+}
+
+[mileageInput, priceInput, totalCostInput, datetimeInput].forEach((el) => {
+  let valueOnFocus = el.value;
+  el.addEventListener('focus', () => {
+    valueOnFocus = el.value;
+  });
+  el.addEventListener('blur', () => {
+    if (el.value !== valueOnFocus) maybeAutoLocate();
+  });
+});
 
 importPhotoBtn.addEventListener('click', () => photoInput.click());
 
@@ -1376,6 +1404,7 @@ photoInput.addEventListener('change', async () => {
   photoInput.value = '';
   if (!file) return;
   const generation = locateGeneration;
+  autoLocateAttempted = true;
 
   photoStatus.hidden = false;
   photoStatus.textContent = 'Reading photo…';
@@ -1637,12 +1666,13 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.14.1';
+const APP_VERSION = '1.14.2';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Location lookup only runs when you tap 📍 — no more re-checks on every field blur',
+  'Auto-locate once when you start a new fill-up — not on app open, and not again on every field',
   'Cleaner Locating state: status under the field + pulsing pin, not duplicated in the input',
+  'Trends charts: Miles sits under MPG',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
