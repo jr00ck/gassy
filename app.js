@@ -943,7 +943,9 @@ function renderLineChart(bodyEl, avgEl, {
     ? 'flat'
     : delta > 0 ? 'up' : 'down';
 
-  avgEl.textContent = `Avg ${formatValue(all.avg)} ${unitLabel}`;
+  avgEl.textContent = unitLabel
+    ? `Avg ${formatValue(all.avg)} ${unitLabel}`
+    : `Avg ${formatValue(all.avg)}`;
 
   const width = 280;
   const height = 88;
@@ -1021,8 +1023,8 @@ function renderTrends(entriesNewestFirst) {
   });
   const priceOk = renderLineChart(chartPriceBodyEl, chartPriceAvgEl, {
     values: price,
-    formatValue: (n) => fmtPricePerGallon(n),
-    unitLabel: '/gal',
+    formatValue: (n) => `${fmtPricePerGallon(n)}/gal`,
+    unitLabel: '',
     stroke: 'rgba(110, 180, 255, 0.9)',
     fill: '#6eb4ff',
     ariaName: 'Price per gallon',
