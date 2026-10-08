@@ -43,16 +43,20 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.13.0', () => {
+test('boots without errors and shows v1.14.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.13.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.14.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
   assert.equal(d.getElementById('rotate-gate'), null);
   assert.ok(d.querySelector('.app-footer-actions #export-btn'));
   assert.ok(d.querySelector('.app-footer-actions #import-btn'));
+  assert.ok(d.getElementById('nav-log'));
+  assert.ok(d.getElementById('nav-trends'));
+  assert.equal(d.getElementById('page-log').hidden, false);
+  assert.equal(d.getElementById('page-trends').hidden, true);
 });
 
 test('Updated badge renders release notes as a bullet list', () => {
@@ -65,7 +69,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.13\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 2);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -129,7 +133,9 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   assert.equal(d.getElementById('export-btn').disabled, false);
   assert.match(d.getElementById('mileage').placeholder, /^≈/);
   // One MPG sample isn't enough for a trend line yet.
-  assert.equal(d.getElementById('mpg-trend').hidden, true);
+  assert.equal(d.getElementById('chart-mpg').hidden, true);
+  assert.match(d.getElementById('log-meta-summary').textContent, /2 fill-ups/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
 
   d.getElementById('mileage').value = '5000';
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -151,10 +157,25 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
-  const trend = d.getElementById('mpg-trend');
-  assert.equal(trend.hidden, false);
-  assert.match(d.getElementById('mpg-trend-avg').textContent, /mpg/i);
-  assert.ok(d.querySelector('#mpg-trend-chart svg'));
+  assert.equal(d.getElementById('chart-mpg').hidden, false);
+  assert.match(d.getElementById('chart-mpg-avg').textContent, /mpg/i);
+  assert.ok(d.querySelector('#chart-mpg-body svg'));
+  assert.match(d.getElementById('chart-mpg-body').textContent, /high/i);
+  assert.match(d.getElementById('chart-mpg-body').textContent, /low/i);
+  assert.equal(d.getElementById('chart-price').hidden, false);
+  assert.ok(d.querySelector('#chart-price-body svg'));
+  assert.equal(d.getElementById('chart-miles').hidden, false);
+  assert.ok(d.querySelector('#chart-miles-body svg'));
+  assert.match(d.getElementById('log-meta-summary').textContent, /3 fill-ups/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
+
+  d.getElementById('nav-trends').click();
+  assert.equal(d.getElementById('page-log').hidden, true);
+  assert.equal(d.getElementById('page-trends').hidden, false);
+  assert.equal(d.getElementById('nav-trends').getAttribute('aria-current'), 'page');
+  d.getElementById('nav-log').click();
+  assert.equal(d.getElementById('page-log').hidden, false);
+  assert.equal(d.getElementById('page-trends').hidden, true);
 
   let blob;
   w.URL.createObjectURL = (b) => {
@@ -417,7 +438,9 @@ test('long log starts fully collapsed; adding a fill-up reveals that month', asy
 
   const groups = [...d.querySelectorAll('.month-group')];
   assert.equal(groups.length, 6);
-  assert.equal(d.getElementById('log-meta').textContent, '6 fill-ups');
+  assert.match(d.getElementById('log-meta-summary').textContent, /6 fill-ups/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
   assert.ok(groups.every((g) => !g.classList.contains('is-open')));
   assert.ok(groups.every((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'false'));
   assert.match(groups[0].querySelector('.month-summary').textContent, /fill-up/);
