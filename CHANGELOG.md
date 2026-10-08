@@ -4,6 +4,11 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
+## [1.14.0] - 2026-10-08
+
+### Features
+
+- All-time log stats and Trends page with MPG, price, miles charts
 ## [1.13.0] - 2026-10-08
 
 ### Features
