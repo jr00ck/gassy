@@ -693,9 +693,9 @@ function calcMpg(mileage, gallons, prevMileage) {
 //
 // - predicted mileage = previous odometer + the usual distance between
 //   fill-ups, clamped so it can never be lower than the previous reading or
-//   higher than what a full tank could plausibly cover (avg MPG × the
-//   largest single fill-up on record, used as a stand-in for tank capacity
-//   since there's no full/partial-fill flag to read that from directly).
+//   higher than a plausible full-tank range: the larger of
+//   (avg MPG × largest fill gallons) and the longest past trip between
+//   fill-ups — so a historically normal interval never false-alarms.
 // - predicted price = most recent price/gallon (about as good as a guess
 //   can get without a fuel-price feed).
 // - predicted total = predicted gallons (from the mileage guess) × predicted
@@ -726,13 +726,15 @@ function computePredictions() {
   const avgMpg = avg(mpgs);
   const avgIntervalMiles = avg(intervals);
   const maxGallons = Math.max(...gallonsPerFill);
+  const maxIntervalMiles = Math.max(...intervals);
   const lastEntry = entries[entries.length - 1];
   const previousMileage = lastEntry.mileage;
 
   if (!(avgMpg > 0) || !(maxGallons > 0)) return null;
 
   const lowerBound = previousMileage;
-  const upperBound = previousMileage + avgMpg * maxGallons;
+  const tankRangeMiles = avgMpg * maxGallons;
+  const upperBound = previousMileage + Math.max(tankRangeMiles, maxIntervalMiles);
   const mileage = Math.min(Math.max(previousMileage + avgIntervalMiles, lowerBound), upperBound);
   const gallons = (mileage - previousMileage) / avgMpg;
   const price = lastEntry.pricePerGallon;
@@ -835,16 +837,27 @@ function summarizeEntries(entries) {
   let spend = 0;
   let gallons = 0;
   let miles = 0;
+  let mpgMiles = 0;
+  let mpgGallons = 0;
   for (const entry of entries) {
     spend += Number(entry.totalCost) || 0;
-    if (entry.pricePerGallon > 0) gallons += entry.totalCost / entry.pricePerGallon;
+    const entryGallons = entry.pricePerGallon > 0 ? entry.totalCost / entry.pricePerGallon : 0;
+    if (entryGallons > 0) gallons += entryGallons;
     const prev = findPreviousEntry(entry.datetime, entry.id);
-    if (prev && entry.mileage > prev.mileage) miles += entry.mileage - prev.mileage;
+    if (prev && entry.mileage > prev.mileage) {
+      const intervalMiles = entry.mileage - prev.mileage;
+      miles += intervalMiles;
+      if (entryGallons > 0) {
+        mpgMiles += intervalMiles;
+        mpgGallons += entryGallons;
+      }
+    }
   }
   return {
     count: entries.length,
     spend,
     miles,
+    avgMpg: mpgGallons > 0 ? mpgMiles / mpgGallons : null,
     avgPpg: gallons > 0 ? spend / gallons : null,
   };
 }
@@ -854,6 +867,7 @@ function formatSummaryBits(summary) {
     `${summary.count} fill-up${summary.count === 1 ? '' : 's'}`,
     fmtMoney(summary.spend),
     summary.miles > 0 ? `${Math.round(summary.miles).toLocaleString()} mi` : null,
+    summary.avgMpg != null ? `${summary.avgMpg.toFixed(1)} mpg avg` : null,
     summary.avgPpg != null ? `${fmtPricePerGallon(summary.avgPpg)}/gal avg` : null,
   ].filter(Boolean);
 }
@@ -1666,13 +1680,17 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.14.2';
+const APP_VERSION = '1.14.0';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Auto-locate once when you start a new fill-up — not on app open, and not again on every field',
-  'Cleaner Locating state: status under the field + pulsing pin, not duplicated in the input',
-  'Trends charts: Miles sits under MPG',
+  'All-time stats at the top of the log — fill-ups, spend, miles, avg MPG, and avg $/gal',
+  'Month summaries also show average MPG',
+  'Trends page with MPG, miles, and price charts (high / low / avg context)',
+  'Simple Log / Trends tabs at the bottom',
+  'One-shot auto location when you start a new fill-up — not on app open, not on every blur',
+  'Cleaner Locating UX: status line + pulsing pin (no duplicate text in the field)',
+  'Mileage “full tank” warning respects your longest past fill-up interval',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 

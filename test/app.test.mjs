@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.14.2', () => {
+test('boots without errors and shows v1.14.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.14.2');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.14.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,9 +69,9 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.2/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
-  assert.ok(items.length >= 1);
+  assert.ok(items.length >= 3);
   assert.ok(items.every((t) => t.trim().length > 0));
   badge.click();
   assert.equal(panel.hidden, true);
@@ -168,6 +168,8 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   assert.ok(d.querySelector('#chart-miles-body svg'));
   assert.match(d.getElementById('log-meta-summary').textContent, /3 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
+  assert.match(d.querySelector('.month-summary').textContent, /mpg avg/);
 
   d.getElementById('nav-trends').click();
   assert.equal(d.getElementById('page-log').hidden, true);
@@ -339,6 +341,30 @@ test('Trends charts list Miles directly under MPG', () => {
   assert.deepEqual(order, ['chart-mpg', 'chart-miles', 'chart-price']);
 });
 
+test('mileage upper bound allows historically normal fill-up intervals', () => {
+  // Avg MPG × max gallons alone would cap ~365 mi, but a past 400 mi trip
+  // must still be within the soft upper bound.
+  const seed = [
+    { id: 'b1', datetime: '2026-08-01T12:00', mileage: 30000, pricePerGallon: 4.149, totalCost: 41.49, location: '', lat: null, lon: null, source: null },
+    { id: 'b2', datetime: '2026-08-15T12:00', mileage: 30300, pricePerGallon: 4.149, totalCost: 41.49, location: '', lat: null, lon: null, source: null },
+    { id: 'b3', datetime: '2026-09-01T12:00', mileage: 30700, pricePerGallon: 4.149, totalCost: 41.49, location: '', lat: null, lon: null, source: null },
+  ];
+  const { d, w } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
+  });
+  // Last = 30700; next at +400 (same as longest past interval) should not warn.
+  d.getElementById('datetime').value = '2026-09-15T12:00';
+  d.getElementById('mileage').value = '31100';
+  d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(d.getElementById('mileage-bounds-warning').hidden, true);
+
+  // Far beyond history + tank estimate should still warn.
+  d.getElementById('mileage').value = '32000';
+  d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(d.getElementById('mileage-bounds-warning').hidden, false);
+  assert.match(d.getElementById('mileage-bounds-warning').textContent, /full tank/i);
+});
+
 test('failed lookup recovers instead of staying stuck', async () => {
   const { d, w } = boot();
   w.navigator.geolocation = {
@@ -489,10 +515,12 @@ test('long log starts fully collapsed; adding a fill-up reveals that month', asy
   assert.match(d.getElementById('log-meta-summary').textContent, /6 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
   assert.ok(groups.every((g) => !g.classList.contains('is-open')));
   assert.ok(groups.every((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'false'));
   assert.match(groups[0].querySelector('.month-summary').textContent, /fill-up/);
   assert.match(groups[0].querySelector('.month-summary').textContent, /\$/);
+  assert.match(groups[0].querySelector('.month-summary').textContent, /mpg avg/);
 
   const toggle = groups[0].querySelector('.month-toggle');
   toggle.click();
