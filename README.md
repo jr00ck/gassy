@@ -14,10 +14,10 @@ A simple gas fill-up log PWA. Install it to your home screen on iOS, Android, or
 - **Location lookup** — tap 📍 for your current GPS location, or fill it in automatically from a photo's metadata (see below). Specifically searches for nearby gas stations rather than any random business, with tappable alternatives shown if more than one is nearby
 - **Fill from photo** — under the ⚙ Advanced panel: pick a photo (e.g. one taken at the pump) and it reads the date/time and GPS location straight out of the photo's EXIF metadata
 - **Tap any log entry** to edit or delete it; a live "Advanced" panel exposes every stored field (entry ID, latitude, longitude, location source) for full transparency and manual correction
-- **CSV export** of your full log, including coordinates
+- **CSV export & import** — backup/restore your full log (including coordinates), near the footer
 - **Month-grouped log** — months start collapsed with spend / miles / $/gal summaries; tap to expand
 - **MPG trend** — small sparkline + overall average under the log
-- **Portrait lock** when installed to the home screen (web manifest `orientation: portrait`). On iOS, changing that usually requires Delete App → re-Add; **Export CSV first** — deleting the home-screen app can wipe its on-device log
+- **Portrait preference** in the web manifest (`orientation: portrait`) — applied on Android installed apps; **iOS home-screen PWAs ignore manifest orientation** (no lock API either). On iOS, Delete App → re-Add also cannot update any manifest fields, and will wipe that install’s local data — **Export CSV first**, then Import after re-adding if needed
 - **Pull down to refresh** to check for and install app updates (standard iOS/Android gesture — this app doesn't auto-update in the background)
 
 ## Data & privacy

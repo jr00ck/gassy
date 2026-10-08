@@ -431,6 +431,13 @@ input[readonly] {
   margin-top: 28px;
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.import-status {
+  text-align: center;
+  margin-top: 4px;
 }
 
 .entries {

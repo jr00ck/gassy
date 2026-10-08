@@ -43,20 +43,21 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.12.1', () => {
+test('boots without errors and shows v1.13.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.12.1');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.13.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
   assert.equal(d.getElementById('rotate-gate'), null);
   assert.ok(d.querySelector('.app-footer-actions #export-btn'));
+  assert.ok(d.querySelector('.app-footer-actions #import-btn'));
 });
 
 test('Updated badge renders release notes as a bullet list', () => {
   const { d } = boot((dom) => {
-    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.12.0');
+    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.12.1');
   });
   const badge = d.getElementById('updated-badge');
   const panel = d.getElementById('whats-new');
@@ -64,7 +65,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.12\.1/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.13\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 2);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -175,6 +176,32 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   assert.ok(entries.some((e) => e.pricePerGallon === 3.499));
   assert.ok(entries.some((e) => e.pricePerGallon === 3.599));
   assert.ok(entries.some((e) => e.location === '=1+1, "Main"'));
+
+  // Round-trip: wipe storage, import the exported CSV, get the log back.
+  w.localStorage.setItem('gassy.entries', '[]');
+  w.confirm = () => true;
+  const file = new w.File([text], 'backup.csv', { type: 'text/csv' });
+  const input = d.getElementById('import-csv-input');
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+  input.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  const restored = JSON.parse(w.localStorage.getItem('gassy.entries'));
+  assert.equal(restored.length, 3);
+  assert.ok(restored.some((e) => e.location === '=1+1, "Main"'));
+  assert.ok(restored.some((e) => e.pricePerGallon === 3.599));
+  assert.match(d.getElementById('import-status').textContent, /Restored 3/i);
+});
+
+test('CSV import rejects bad headers and can be cancelled', async () => {
+  const { d, w } = boot();
+  w.confirm = () => false;
+  const bad = new w.File(['foo,bar\n1,2\n'], 'bad.csv', { type: 'text/csv' });
+  const input = d.getElementById('import-csv-input');
+  Object.defineProperty(input, 'files', { configurable: true, value: [bad] });
+  input.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  assert.match(d.getElementById('import-status').textContent, /header/i);
+  assert.equal(JSON.parse(w.localStorage.getItem('gassy.entries') || '[]').length, 0);
 });
 
 test('corrupt or non-array storage does not crash', () => {

@@ -135,7 +135,10 @@
 
   <div class="app-footer-actions">
     <button type="button" id="export-btn" class="link-btn">Export CSV</button>
+    <button type="button" id="import-btn" class="link-btn">Import CSV</button>
+    <input type="file" id="import-csv-input" accept=".csv,text/csv,text/plain" hidden>
   </div>
+  <p id="import-status" class="hint import-status" hidden></p>
 
   <footer class="app-footer">
     <span class="app-footer-version"><span id="app-version"></span> · <span id="storage-usage"></span></span>
