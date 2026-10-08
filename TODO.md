@@ -10,7 +10,7 @@ Statuses: `done` · `in progress` · `todo`
 - [x] **done** — Fix date/time field not moving down when the Advanced (⚙) panel expands
 - [x] **done** — Delete merged remote branches `claude/session-agzzje` and `claude/location-lookup-triggers-3yyjix`
 - [x] **done** — Opened release PR [#8](https://github.com/jr00ck/gassy/pull/8) (`fix/reliability-quick-wins` → `main`, app bumped to 1.10.0)
-- [ ] **todo** — After PR #8 merges: tag `v1.10.0` and create the GitHub release so Pages deploys
+- [ ] **in progress** — Merge PR #8, tag `v1.10.0`, create the GitHub release so Pages deploys, then delete the feature branch
 
 ## Product backlog
 
@@ -20,11 +20,11 @@ Statuses: `done` · `in progress` · `todo`
 - [ ] **todo** — Portrait lock on by default; add a Settings checkbox to allow landscape / unlock orientation
 - [ ] **todo** — Long log: group entries by calendar month; months older than a threshold collapse by default (tappable to expand). Keep several recent months open — only the latest month open would be too strict at ~2–4 fill-ups/month. Each month header gets a compact summary (fill-up count, total spend, total miles, avg $/gal)
 - [ ] **todo** — Vehicle / tank profiles (multiple cars, or at least a named tank capacity instead of inferring from largest fill)
-- [ ] **todo** — Rolling MPG chart / sparkline (overall + last N fill-ups) without turning the first screen into a dashboard
+- [ ] **todo** — MPG trend viz: a small sparkline (or equally compact chart) of per-fill-up MPG over the last N entries, plus an overall average — tucked under the log or in a secondary section so the first screen stays a form, not a dashboard
 - [ ] **todo** — Cost-per-mile and spend-over-time summary (secondary surface, not the hero)
 - [ ] **todo** — Optional fuel grade / octane field (for station comparison later)
-- [ ] **todo** — Reminder after X miles or Y days since last fill-up (local notification / badge)
+- [ ] **todo** — Fill-up reminder: optional local nudge when it's been X miles (from last odometer + typical interval) or Y days since the last logged fill-up — badge and/or notification, fully opt-in, no server
 - [ ] **todo** — Backup & restore beyond CSV (e.g. one-tap JSON file, or Web Share of the backup)
-- [ ] **todo** — Station favorites / recent locations chips (skip a full lookup when you usually fill at the same 1–2 places)
+- [ ] **todo** — Quick-pick stations: remember places you've logged before (and/or pinned favorites) and show them as tappable chips near Location so a usual station can be chosen without another GPS/Overpass lookup
 - [ ] **todo** — Accessibility pass (focus order, reduce-motion for pull-to-refresh, larger tap targets review)
 - [ ] **todo** — CI: run the automated test suite on PRs
