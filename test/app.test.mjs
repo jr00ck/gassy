@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.12.0', () => {
+test('boots without errors and shows v1.12.1', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.12.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.12.1');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -56,7 +56,7 @@ test('boots without errors and shows v1.12.0', () => {
 
 test('Updated badge renders release notes as a bullet list', () => {
   const { d } = boot((dom) => {
-    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.11.1');
+    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.12.0');
   });
   const badge = d.getElementById('updated-badge');
   const panel = d.getElementById('whats-new');
@@ -64,7 +64,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.12\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.12\.1/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 2);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -255,6 +255,92 @@ test('failed lookup recovers instead of staying stuck', async () => {
   await new Promise((r) => setTimeout(r, 20));
   assert.match(d.getElementById('location').value, /37\.7/);
   assert.equal(d.getElementById('submit-btn').disabled, false);
+});
+
+function fetchUrl(url) {
+  return typeof url === 'string' ? url : url.url;
+}
+
+function jsonResponse(body) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => body,
+  };
+}
+
+test('far stations are suggestions only — field stays empty with no-nearby message', async () => {
+  const { d, w } = boot();
+  w.navigator.geolocation = {
+    getCurrentPosition(success) {
+      success({ coords: { latitude: 37.7, longitude: -122.4 } });
+    },
+  };
+  w.fetch = (url) => {
+    const href = fetchUrl(url);
+    if (href.includes('nominatim')) {
+      return Promise.resolve(jsonResponse({
+        type: 'residential',
+        address: { road: 'Home St', city: 'Town', state: 'California' },
+      }));
+    }
+    if (href.includes('overpass')) {
+      // ~965 m away (~0.6 mi) — outside the auto-fill radius.
+      return Promise.resolve(jsonResponse({
+        elements: [{
+          type: 'node',
+          lat: 37.7087,
+          lon: -122.4,
+          tags: { name: 'Distant Shell', amenity: 'fuel' },
+        }],
+      }));
+    }
+    return Promise.reject(new Error(`unexpected fetch: ${href}`));
+  };
+
+  d.getElementById('locate-btn').click();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(d.getElementById('location').value, '');
+  assert.match(d.getElementById('location-status').textContent, /No gas station found nearby/i);
+  assert.match(d.getElementById('location-status').textContent, /suggestion/i);
+  const chips = [...d.querySelectorAll('.station-chip')];
+  assert.equal(chips.length, 1);
+  assert.match(chips[0].textContent, /Distant Shell/);
+  assert.equal(d.getElementById('location').dataset.lat, '37.7');
+});
+
+test('truly nearby stations still auto-fill the location field', async () => {
+  const { d, w } = boot();
+  w.navigator.geolocation = {
+    getCurrentPosition(success) {
+      success({ coords: { latitude: 37.7, longitude: -122.4 } });
+    },
+  };
+  w.fetch = (url) => {
+    const href = fetchUrl(url);
+    if (href.includes('nominatim')) {
+      return Promise.resolve(jsonResponse({
+        type: 'residential',
+        address: { road: 'Pump Rd', city: 'Town', state: 'California' },
+      }));
+    }
+    if (href.includes('overpass')) {
+      return Promise.resolve(jsonResponse({
+        elements: [{
+          type: 'node',
+          lat: 37.7004,
+          lon: -122.4,
+          tags: { name: 'Corner Chevon', amenity: 'fuel' },
+        }],
+      }));
+    }
+    return Promise.reject(new Error(`unexpected fetch: ${href}`));
+  };
+
+  d.getElementById('locate-btn').click();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.match(d.getElementById('location').value, /Corner Chevon/);
+  assert.equal(d.getElementById('nearby-stations').hidden, true);
 });
 
 test('editing without saved GPS asks before replacing a typed location', async () => {

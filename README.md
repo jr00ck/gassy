@@ -17,7 +17,7 @@ A simple gas fill-up log PWA. Install it to your home screen on iOS, Android, or
 - **CSV export** of your full log, including coordinates
 - **Month-grouped log** — months start collapsed with spend / miles / $/gal summaries; tap to expand
 - **MPG trend** — small sparkline + overall average under the log
-- **Portrait lock** when installed to the home screen (web manifest `orientation: portrait`)
+- **Portrait lock** when installed to the home screen (web manifest `orientation: portrait`). On iOS, changing that usually requires Delete App → re-Add; **Export CSV first** — deleting the home-screen app can wipe its on-device log
 - **Pull down to refresh** to check for and install app updates (standard iOS/Android gesture — this app doesn't auto-update in the background)
 
 ## Data & privacy
