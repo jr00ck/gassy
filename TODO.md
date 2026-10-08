@@ -20,6 +20,8 @@ makes a feature clearer.
 - Long log by month — older months collapse by default (several recent months stay open); each month header shows fill-up count, total spend, total miles, and avg $/gal
 - MPG trend — compact sparkline of recent per-fill-up MPG plus overall average, under the log
 - Accessibility pass — clearer focus, larger tap targets, calmer pull-to-refresh when Reduce Motion is on
+- Portrait lock by default — Settings checkbox to allow landscape; sideways phone shows a “turn upright” gate when locked
+- No pinch / tap-to-zoom — viewport locked for a more installed-app feel
 
 ---
 
@@ -28,7 +30,6 @@ makes a feature clearer.
 - **CSV import** — restore a previously exported log (separate from export)
 - **Photo fill beyond JPEG** — HEIC / other formats (or convert before reading EXIF), not only JPEG APP1
 - **Full vs partial fill-up** — mark top-offs so predictions and tank-capacity bounds aren't skewed by treating every interval as a full tank
-- **Portrait lock** — on by default, with a Settings checkbox to allow landscape
 - **Vehicle / tank profiles** — multiple cars, or at least a named tank capacity instead of guessing from the largest fill
 - **Cost-per-mile & spend over time** — summary on a secondary surface, not the hero
 - **Backup & restore beyond CSV** — e.g. one-tap JSON file, or Web Share of the backup

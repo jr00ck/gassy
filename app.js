@@ -1210,16 +1210,49 @@ setDefaultDatetime();
 applyPredictedPlaceholders();
 render();
 
+// --- Orientation: portrait-locked by default; Settings can allow landscape ---
+
+const ALLOW_LANDSCAPE_KEY = 'gassy.allowLandscape';
+const allowLandscapeInput = document.getElementById('allow-landscape');
+const rotateGate = document.getElementById('rotate-gate');
+
+function isLandscapeAllowed() {
+  return localStorage.getItem(ALLOW_LANDSCAPE_KEY) === '1';
+}
+
+async function applyOrientationLock() {
+  const allowLandscape = isLandscapeAllowed();
+  document.documentElement.dataset.orientationLock = allowLandscape ? 'any' : 'portrait';
+  if (rotateGate) rotateGate.hidden = allowLandscape;
+
+  if (!screen.orientation) return;
+  try {
+    if (allowLandscape) {
+      if (typeof screen.orientation.unlock === 'function') screen.orientation.unlock();
+    } else if (typeof screen.orientation.lock === 'function') {
+      // May reject in a regular browser tab; CSS rotate-gate covers that case.
+      await screen.orientation.lock('portrait');
+    }
+  } catch {
+    // Unsupported or requires fullscreen/standalone — ignore.
+  }
+}
+
+allowLandscapeInput.checked = isLandscapeAllowed();
+allowLandscapeInput.addEventListener('change', () => {
+  localStorage.setItem(ALLOW_LANDSCAPE_KEY, allowLandscapeInput.checked ? '1' : '0');
+  applyOrientationLock();
+});
+applyOrientationLock();
+
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.11.1';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Fill-up log groups by calendar month, with older months collapsed and a compact spend / miles / $/gal summary on each header',
-  'MPG trend sparkline under the log, plus your overall average',
-  'What\'s new shows as a readable bullet list instead of one long paragraph',
-  'Accessibility: larger tap targets, clearer keyboard focus, and calmer pull-to-refresh when Reduce Motion is on',
+  'Portrait lock on by default — turn on Allow landscape in Settings if you want sideways',
+  'Pinch / tap-to-zoom turned back off so it feels more like an installed app',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
