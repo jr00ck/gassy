@@ -13,13 +13,26 @@ const locateBtn = document.getElementById('locate-btn');
 const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
 const logMeta = document.getElementById('log-meta');
+const logMetaSummary = document.getElementById('log-meta-summary');
 const exportBtn = document.getElementById('export-btn');
 const importBtn = document.getElementById('import-btn');
 const importCsvInput = document.getElementById('import-csv-input');
 const importStatus = document.getElementById('import-status');
-const mpgTrendEl = document.getElementById('mpg-trend');
-const mpgTrendAvgEl = document.getElementById('mpg-trend-avg');
-const mpgTrendChartEl = document.getElementById('mpg-trend-chart');
+const pageLog = document.getElementById('page-log');
+const pageTrends = document.getElementById('page-trends');
+const navLog = document.getElementById('nav-log');
+const navTrends = document.getElementById('nav-trends');
+const trendsEmpty = document.getElementById('trends-empty');
+const trendsContent = document.getElementById('trends-content');
+const chartMpgEl = document.getElementById('chart-mpg');
+const chartMpgAvgEl = document.getElementById('chart-mpg-avg');
+const chartMpgBodyEl = document.getElementById('chart-mpg-body');
+const chartPriceEl = document.getElementById('chart-price');
+const chartPriceAvgEl = document.getElementById('chart-price-avg');
+const chartPriceBodyEl = document.getElementById('chart-price-body');
+const chartMilesEl = document.getElementById('chart-miles');
+const chartMilesAvgEl = document.getElementById('chart-miles-avg');
+const chartMilesBodyEl = document.getElementById('chart-miles-body');
 const storageUsageEl = document.getElementById('storage-usage');
 const importPhotoBtn = document.getElementById('import-photo-btn');
 const photoInput = document.getElementById('photo-input');
@@ -46,6 +59,9 @@ let preLocateValue = '';
 // Bumped when the form is reset or a different entry is loaded, so an
 // in-flight lookup can't write its result into whatever is on screen now.
 let locateGeneration = 0;
+// One automatic GPS lookup per new-entry form session (first field edit).
+// Manual 📍 / photo import still work anytime; we never re-fire on later blurs.
+let autoLocateAttempted = false;
 
 // Base prediction for the fill-up being started (mileage/price/total), or
 // null when there isn't enough history yet. Recomputed each time a new-entry
@@ -108,15 +124,17 @@ function setCollapsibleOpen(panel, open) {
   setTimeout(finish, 280);
 }
 
-// Shows loading feedback directly in the location field itself (not just the
-// status line below it), so a lookup started while the field already has a
-// value is just as visible as the "Locating…" state on a fresh, empty field.
+// Loading state lives on the 📍 button + status line only — leave the field
+// alone so we don't duplicate "Locating…" in two places or wipe typed text.
 function beginLocating() {
   if (!isLocating) preLocateValue = locationInput.value;
   isLocating = true;
-  locationInput.value = 'Locating…';
   locationInput.readOnly = true;
   locateBtn.disabled = true;
+  locateBtn.classList.add('is-locating');
+  locateBtn.setAttribute('aria-busy', 'true');
+  locateBtn.setAttribute('aria-label', 'Locating…');
+  locateBtn.title = 'Locating…';
   submitBtn.disabled = true;
   locationStatus.textContent = 'Locating…';
 }
@@ -125,11 +143,15 @@ function endLocating() {
   isLocating = false;
   locationInput.readOnly = false;
   locateBtn.disabled = false;
+  locateBtn.classList.remove('is-locating');
+  locateBtn.removeAttribute('aria-busy');
+  locateBtn.setAttribute('aria-label', 'Refresh current location');
+  locateBtn.title = 'Refresh current location';
   submitBtn.disabled = false;
 }
 
 // Nothing new was found (e.g. permission denied) — put back whatever was
-// there before the lookup started instead of leaving "Locating…" stuck.
+// there before the lookup started.
 function cancelLocating() {
   locationInput.value = preLocateValue;
   endLocating();
@@ -671,9 +693,9 @@ function calcMpg(mileage, gallons, prevMileage) {
 //
 // - predicted mileage = previous odometer + the usual distance between
 //   fill-ups, clamped so it can never be lower than the previous reading or
-//   higher than what a full tank could plausibly cover (avg MPG × the
-//   largest single fill-up on record, used as a stand-in for tank capacity
-//   since there's no full/partial-fill flag to read that from directly).
+//   higher than a plausible full-tank range: the larger of
+//   (avg MPG × largest fill gallons) and the longest past trip between
+//   fill-ups — so a historically normal interval never false-alarms.
 // - predicted price = most recent price/gallon (about as good as a guess
 //   can get without a fuel-price feed).
 // - predicted total = predicted gallons (from the mileage guess) × predicted
@@ -704,13 +726,15 @@ function computePredictions() {
   const avgMpg = avg(mpgs);
   const avgIntervalMiles = avg(intervals);
   const maxGallons = Math.max(...gallonsPerFill);
+  const maxIntervalMiles = Math.max(...intervals);
   const lastEntry = entries[entries.length - 1];
   const previousMileage = lastEntry.mileage;
 
   if (!(avgMpg > 0) || !(maxGallons > 0)) return null;
 
   const lowerBound = previousMileage;
-  const upperBound = previousMileage + avgMpg * maxGallons;
+  const tankRangeMiles = avgMpg * maxGallons;
+  const upperBound = previousMileage + Math.max(tankRangeMiles, maxIntervalMiles);
   const mileage = Math.min(Math.max(previousMileage + avgIntervalMiles, lowerBound), upperBound);
   const gallons = (mileage - previousMileage) / avgMpg;
   const price = lastEntry.pricePerGallon;
@@ -808,22 +832,44 @@ function groupEntriesByMonth(entriesNewestFirst) {
   return groups;
 }
 
-function summarizeMonth(monthEntries) {
+// Same summary shape for a calendar month or the whole log.
+function summarizeEntries(entries) {
   let spend = 0;
   let gallons = 0;
   let miles = 0;
-  for (const entry of monthEntries) {
+  let mpgMiles = 0;
+  let mpgGallons = 0;
+  for (const entry of entries) {
     spend += Number(entry.totalCost) || 0;
-    if (entry.pricePerGallon > 0) gallons += entry.totalCost / entry.pricePerGallon;
+    const entryGallons = entry.pricePerGallon > 0 ? entry.totalCost / entry.pricePerGallon : 0;
+    if (entryGallons > 0) gallons += entryGallons;
     const prev = findPreviousEntry(entry.datetime, entry.id);
-    if (prev && entry.mileage > prev.mileage) miles += entry.mileage - prev.mileage;
+    if (prev && entry.mileage > prev.mileage) {
+      const intervalMiles = entry.mileage - prev.mileage;
+      miles += intervalMiles;
+      if (entryGallons > 0) {
+        mpgMiles += intervalMiles;
+        mpgGallons += entryGallons;
+      }
+    }
   }
   return {
-    count: monthEntries.length,
+    count: entries.length,
     spend,
     miles,
+    avgMpg: mpgGallons > 0 ? mpgMiles / mpgGallons : null,
     avgPpg: gallons > 0 ? spend / gallons : null,
   };
+}
+
+function formatSummaryBits(summary) {
+  return [
+    `${summary.count} fill-up${summary.count === 1 ? '' : 's'}`,
+    fmtMoney(summary.spend),
+    summary.miles > 0 ? `${Math.round(summary.miles).toLocaleString()} mi` : null,
+    summary.avgMpg != null ? `${summary.avgMpg.toFixed(1)} mpg avg` : null,
+    summary.avgPpg != null ? `${fmtPricePerGallon(summary.avgPpg)}/gal avg` : null,
+  ].filter(Boolean);
 }
 
 function isMonthOpen(key) {
@@ -859,68 +905,190 @@ function createEntryElement(entry, { arrive = false } = {}) {
   return li;
 }
 
-// Per-fill MPG samples in chronological order (oldest → newest).
-function collectMpgSeries(entriesNewestFirst) {
+// Interval series (MPG / miles between fills) and per-fill price, oldest → newest.
+function collectTrendSeries(entriesNewestFirst) {
   const chronological = [...entriesNewestFirst].reverse();
-  const points = [];
+  const mpg = [];
+  const miles = [];
+  const price = [];
+
+  for (const entry of chronological) {
+    if (entry.pricePerGallon > 0) price.push(Number(entry.pricePerGallon));
+  }
+
   for (let i = 1; i < chronological.length; i++) {
     const cur = chronological[i];
     const prev = chronological[i - 1];
     const gallons = cur.pricePerGallon > 0 ? cur.totalCost / cur.pricePerGallon : 0;
-    const mpg = calcMpg(cur.mileage, gallons, prev.mileage);
-    if (mpg != null) points.push(mpg);
+    const mpgVal = calcMpg(cur.mileage, gallons, prev.mileage);
+    if (mpgVal != null) {
+      mpg.push(mpgVal);
+      miles.push(cur.mileage - prev.mileage);
+    }
   }
-  return points;
+
+  return { mpg, miles, price };
 }
 
-function renderMpgTrend(entriesNewestFirst) {
-  const series = collectMpgSeries(entriesNewestFirst);
-  if (series.length < 2) {
-    mpgTrendEl.hidden = true;
-    mpgTrendChartEl.innerHTML = '';
-    mpgTrendAvgEl.textContent = '';
-    return;
+function seriesStats(values) {
+  if (!values.length) return null;
+  const sum = values.reduce((a, b) => a + b, 0);
+  return {
+    count: values.length,
+    avg: sum / values.length,
+    min: Math.min(...values),
+    max: Math.max(...values),
+    last: values[values.length - 1],
+    first: values[0],
+  };
+}
+
+function renderLineChart(bodyEl, avgEl, {
+  values,
+  formatValue,
+  unitLabel,
+  stroke = 'rgba(255, 107, 53, 0.9)',
+  fill = '#ff6b35',
+  ariaName,
+}) {
+  if (!values || values.length < 2) {
+    bodyEl.innerHTML = '';
+    avgEl.textContent = '';
+    return false;
   }
 
-  const recent = series.slice(-12);
-  const overallAvg = series.reduce((sum, n) => sum + n, 0) / series.length;
-  const recentAvg = recent.reduce((sum, n) => sum + n, 0) / recent.length;
-  mpgTrendAvgEl.textContent = `Avg ${overallAvg.toFixed(1)} mpg`;
+  const recent = values.slice(-12);
+  const all = seriesStats(values);
+  const windowStats = seriesStats(recent);
+  const delta = windowStats.last - windowStats.first;
+  const deltaAbs = Math.abs(delta);
+  const trendWord = deltaAbs < (Math.abs(windowStats.avg) * 0.02 || 0.05)
+    ? 'flat'
+    : delta > 0 ? 'up' : 'down';
+
+  avgEl.textContent = unitLabel
+    ? `Avg ${formatValue(all.avg)} ${unitLabel}`
+    : `Avg ${formatValue(all.avg)}`;
 
   const width = 280;
-  const height = 44;
-  const min = Math.min(...recent);
-  const max = Math.max(...recent);
+  const height = 88;
+  const padY = 8;
+  const min = windowStats.min;
+  const max = windowStats.max;
   const range = max - min || 1;
+  const avgY = height - padY - ((windowStats.avg - min) / range) * (height - padY * 2);
   const coords = recent.map((value, i) => {
     const x = recent.length === 1 ? width / 2 : (i / (recent.length - 1)) * width;
-    const y = height - 4 - ((value - min) / range) * (height - 8);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    const y = height - padY - ((value - min) / range) * (height - padY * 2);
+    return { x, y, value };
   });
-  const last = recent[recent.length - 1];
-  const lastX = coords[coords.length - 1].split(',')[0];
-  const lastY = coords[coords.length - 1].split(',')[1];
+  const pointsAttr = coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const last = coords[coords.length - 1];
+  const highIdx = recent.indexOf(windowStats.max);
+  const lowIdx = recent.indexOf(windowStats.min);
+  const high = coords[highIdx];
+  const low = coords[lowIdx];
 
-  mpgTrendChartEl.setAttribute(
+  const metaBits = [
+    `Last ${recent.length}`,
+    `high ${formatValue(windowStats.max)}`,
+    `low ${formatValue(windowStats.min)}`,
+    `latest ${formatValue(windowStats.last)}`,
+    trendWord === 'flat'
+      ? 'holding steady'
+      : `${trendWord} ${formatValue(deltaAbs)} from first in window`,
+  ];
+  if (values.length > recent.length) {
+    metaBits.push(`all-time avg ${formatValue(all.avg)}`);
+  }
+
+  bodyEl.setAttribute(
     'aria-label',
-    `MPG over the last ${recent.length} fill-ups. Latest ${last.toFixed(1)}, recent average ${recentAvg.toFixed(1)}, overall average ${overallAvg.toFixed(1)}.`
+    `${ariaName} over the last ${recent.length} points. Latest ${formatValue(windowStats.last)}, average ${formatValue(windowStats.avg)}, high ${formatValue(windowStats.max)}, low ${formatValue(windowStats.min)}.`
   );
-  mpgTrendChartEl.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <polyline
-        fill="none"
-        stroke="rgba(255, 107, 53, 0.9)"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        points="${coords.join(' ')}"
-      />
-      <circle cx="${lastX}" cy="${lastY}" r="3.5" fill="#ff6b35" />
-    </svg>
-    <p class="mpg-trend-meta">Last ${recent.length} fill-ups · latest ${last.toFixed(1)} mpg</p>
+  bodyEl.innerHTML = `
+    <div class="trend-chart-plot">
+      <div class="trend-chart-scale" aria-hidden="true">
+        <span>${escapeHtml(formatValue(max))}</span>
+        <span>${escapeHtml(formatValue(windowStats.avg))}</span>
+        <span>${escapeHtml(formatValue(min))}</span>
+      </div>
+      <div class="trend-chart-svg-wrap">
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <line x1="0" y1="${avgY.toFixed(1)}" x2="${width}" y2="${avgY.toFixed(1)}"
+            stroke="rgba(154, 160, 172, 0.35)" stroke-width="1" stroke-dasharray="4 4" />
+          <polyline
+            fill="none"
+            stroke="${stroke}"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            points="${pointsAttr}"
+          />
+          <circle cx="${high.x.toFixed(1)}" cy="${high.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />
+          <circle cx="${low.x.toFixed(1)}" cy="${low.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />
+          <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.5" fill="${fill}" />
+        </svg>
+      </div>
+    </div>
+    <p class="trend-chart-meta">${escapeHtml(metaBits.join(' · '))}</p>
   `;
-  mpgTrendEl.hidden = false;
+  return true;
 }
+
+function renderTrends(entriesNewestFirst) {
+  const { mpg, miles, price } = collectTrendSeries(entriesNewestFirst);
+  const mpgOk = renderLineChart(chartMpgBodyEl, chartMpgAvgEl, {
+    values: mpg,
+    formatValue: (n) => n.toFixed(1),
+    unitLabel: 'mpg',
+    ariaName: 'MPG',
+  });
+  const priceOk = renderLineChart(chartPriceBodyEl, chartPriceAvgEl, {
+    values: price,
+    formatValue: (n) => `${fmtPricePerGallon(n)}/gal`,
+    unitLabel: '',
+    stroke: 'rgba(110, 180, 255, 0.9)',
+    fill: '#6eb4ff',
+    ariaName: 'Price per gallon',
+  });
+  const milesOk = renderLineChart(chartMilesBodyEl, chartMilesAvgEl, {
+    values: miles,
+    formatValue: (n) => Math.round(n).toLocaleString(),
+    unitLabel: 'mi',
+    stroke: 'rgba(120, 210, 160, 0.95)',
+    fill: '#78d2a0',
+    ariaName: 'Miles between fill-ups',
+  });
+
+  chartMpgEl.hidden = !mpgOk;
+  chartPriceEl.hidden = !priceOk;
+  chartMilesEl.hidden = !milesOk;
+
+  const any = mpgOk || priceOk || milesOk;
+  trendsContent.hidden = !any;
+  trendsEmpty.hidden = any;
+}
+
+function showPage(page) {
+  const onTrends = page === 'trends';
+  pageLog.hidden = onTrends;
+  pageTrends.hidden = !onTrends;
+  navLog.classList.toggle('is-active', !onTrends);
+  navTrends.classList.toggle('is-active', onTrends);
+  if (onTrends) {
+    navLog.removeAttribute('aria-current');
+    navTrends.setAttribute('aria-current', 'page');
+    // Fresh render when opening Trends so charts match the current log.
+    renderTrends(loadEntries().sort((a, b) => new Date(b.datetime) - new Date(a.datetime)));
+  } else {
+    navTrends.removeAttribute('aria-current');
+    navLog.setAttribute('aria-current', 'page');
+  }
+}
+
+navLog.addEventListener('click', () => showPage('log'));
+navTrends.addEventListener('click', () => showPage('trends'));
 
 function render() {
   const entries = loadEntries().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
@@ -931,23 +1099,18 @@ function render() {
 
   if (entries.length) {
     logMeta.hidden = false;
-    logMeta.textContent = `${entries.length} fill-up${entries.length === 1 ? '' : 's'}`;
+    logMetaSummary.textContent = formatSummaryBits(summarizeEntries(entries)).join(' · ');
   } else {
     logMeta.hidden = true;
-    logMeta.textContent = '';
+    logMetaSummary.textContent = '';
   }
 
   const arrivingId = revealEntryId;
   const groups = groupEntriesByMonth(entries);
   groups.forEach((group) => {
     const open = isMonthOpen(group.key);
-    const summary = summarizeMonth(group.entries);
-    const summaryBits = [
-      `${summary.count} fill-up${summary.count === 1 ? '' : 's'}`,
-      fmtMoney(summary.spend),
-      summary.miles > 0 ? `${Math.round(summary.miles).toLocaleString()} mi` : null,
-      summary.avgPpg != null ? `${fmtPricePerGallon(summary.avgPpg)}/gal avg` : null,
-    ].filter(Boolean);
+    const summary = summarizeEntries(group.entries);
+    const summaryBits = formatSummaryBits(summary);
 
     const monthLi = document.createElement('li');
     monthLi.className = 'month-group';
@@ -1005,7 +1168,7 @@ function render() {
     }
   });
 
-  renderMpgTrend(entries);
+  renderTrends(entries);
 
   if (arrivingId) {
     const arrived = entriesList.querySelector(`.entry[data-id="${arrivingId}"]`);
@@ -1066,6 +1229,7 @@ function resetToNewEntry() {
   locateGeneration++;
   if (isLocating) endLocating();
   editingId = null;
+  autoLocateAttempted = false;
   form.reset();
   setDefaultDatetime();
   submitBtn.textContent = 'Add fill-up';
@@ -1080,8 +1244,8 @@ function resetToNewEntry() {
   applyPredictedPlaceholders();
 
   // form.reset() clears the visible location text, but not the coordinate
-  // data attached to it — without lookup auto-firing on reset anymore,
-  // that stale lat/lon would otherwise silently carry over into the next entry.
+  // data attached to it — without that wipe, stale lat/lon would silently
+  // carry over into the next entry.
   delete locationInput.dataset.lat;
   delete locationInput.dataset.lon;
   lastLocationSource = null;
@@ -1106,6 +1270,8 @@ async function loadEntryIntoForm(entry) {
   if (isLocating) endLocating();
   const generation = locateGeneration;
   editingId = entry.id;
+  // Editing never auto-locates; pin/photo remain available.
+  autoLocateAttempted = true;
   currentPredictions = null;
   currentTotalGuess = null;
   mileageInput.placeholder = 'e.g. 45210';
@@ -1210,7 +1376,10 @@ deleteEntryBtn.addEventListener('click', () => {
   render();
 });
 
-locateBtn.addEventListener('click', locate);
+locateBtn.addEventListener('click', () => {
+  autoLocateAttempted = true;
+  locate();
+});
 
 attachCurrencyInput(priceInput, 2);
 attachCurrencyInput(totalCostInput, 2);
@@ -1219,19 +1388,26 @@ attachCurrencyInput(totalCostInput, 2);
   el.addEventListener('input', updateMpgPreview);
 });
 
-// Don't fetch location on load — only once the user shows real intent by
-// filling in a field. Skipped while editing an existing entry so touching up
-// an old fill-up never overwrites its saved location with where you are now.
-// Also skipped once the location field already has a value, so tabbing
-// through the rest of the form after the first lookup fills it in doesn't
-// keep re-triggering (and re-showing "Locating…") on every later field.
+// Auto-locate once when the user starts filling a *new* entry — not on app
+// open, not while editing, and never again on later field blurs. Manual 📍
+// and photo import still work anytime.
+function maybeAutoLocate() {
+  if (editingId || autoLocateAttempted || isLocating) return;
+  if (locationInput.value.trim()) {
+    autoLocateAttempted = true;
+    return;
+  }
+  autoLocateAttempted = true;
+  locate();
+}
+
 [mileageInput, priceInput, totalCostInput, datetimeInput].forEach((el) => {
   let valueOnFocus = el.value;
   el.addEventListener('focus', () => {
     valueOnFocus = el.value;
   });
   el.addEventListener('blur', () => {
-    if (!editingId && el.value !== valueOnFocus && !locationInput.value.trim()) locate();
+    if (el.value !== valueOnFocus) maybeAutoLocate();
   });
 });
 
@@ -1242,6 +1418,7 @@ photoInput.addEventListener('change', async () => {
   photoInput.value = '';
   if (!file) return;
   const generation = locateGeneration;
+  autoLocateAttempted = true;
 
   photoStatus.hidden = false;
   photoStatus.textContent = 'Reading photo…';
@@ -1503,12 +1680,17 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Import CSV next to Export — restore a backup after reinstalling the home-screen app (or anytime)',
-  'Export reminds you to keep the file safe before deleting the app on iOS',
+  'All-time stats at the top of the log — fill-ups, spend, miles, avg MPG, and avg $/gal',
+  'Month summaries also show average MPG',
+  'Trends page with MPG, miles, and price charts (high / low / avg context)',
+  'Simple Log / Trends tabs at the bottom',
+  'One-shot auto location when you start a new fill-up — not on app open, not on every blur',
+  'Cleaner Locating UX: status line + pulsing pin (no duplicate text in the field)',
+  'Mileage “full tank” warning respects your longest past fill-up interval',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 

@@ -33,117 +33,149 @@
 </header>
 
 <main>
-  <form id="entry-form" class="card">
-    <div id="edit-banner" class="edit-banner" hidden>
-      <span id="edit-banner-text">Editing fill-up</span>
-      <button type="button" id="cancel-edit-btn" class="link-btn">Cancel</button>
-    </div>
-
-    <div class="field">
-      <div class="field-label-row">
-        <label for="datetime">Date &amp; time</label>
-        <button type="button" id="advanced-toggle" class="icon-btn" title="Advanced"
-          aria-label="Advanced" aria-expanded="false" aria-controls="advanced-panel">⚙</button>
-      </div>
-
-      <div id="advanced-panel" class="advanced-panel collapsible" hidden>
-        <div class="collapse-inner">
-          <div class="field">
-            <label for="entry-id-field">Entry ID</label>
-            <input type="text" id="entry-id-field" readonly placeholder="(assigned on save)">
-          </div>
-
-          <div class="row">
-            <div class="field">
-              <label for="lat-field">Latitude</label>
-              <input type="text" id="lat-field" inputmode="decimal" placeholder="—">
-            </div>
-            <div class="field">
-              <label for="lon-field">Longitude</label>
-              <input type="text" id="lon-field" inputmode="decimal" placeholder="—">
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="source-field">Location source</label>
-            <select id="source-field">
-              <option value="">Unknown</option>
-              <option value="photo">Photo</option>
-              <option value="gps">GPS</option>
-              <option value="manual">Typed manually</option>
-            </select>
-          </div>
-
-          <button type="button" id="import-photo-btn" class="secondary-outline-btn">📷 Fill date &amp; location from photo</button>
-          <input type="file" id="photo-input" accept="image/*" hidden>
-          <p id="photo-status" class="hint" hidden></p>
-        </div>
-      </div>
-
-      <input type="datetime-local" id="datetime" name="datetime" required>
-    </div>
-
-    <div class="field">
-      <label for="mileage">Mileage (odometer)</label>
-      <input type="number" id="mileage" name="mileage" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 45210" required>
-      <p id="mpg-preview" class="hint" hidden></p>
-      <p id="mileage-bounds-warning" class="hint" hidden></p>
-    </div>
-
-    <div class="row">
-      <div class="field">
-        <label for="pricePerGallon">Price / gallon</label>
-        <div class="price-input-row">
-          <input type="text" id="pricePerGallon" name="pricePerGallon" inputmode="numeric" placeholder="3.49" required>
-          <span class="price-suffix" aria-hidden="true">9</span>
-        </div>
+  <section id="page-log" class="page" aria-label="Log">
+    <form id="entry-form" class="card">
+      <div id="edit-banner" class="edit-banner" hidden>
+        <span id="edit-banner-text">Editing fill-up</span>
+        <button type="button" id="cancel-edit-btn" class="link-btn">Cancel</button>
       </div>
 
       <div class="field">
-        <label for="totalCost">Total cost</label>
-        <input type="text" id="totalCost" name="totalCost" inputmode="numeric" placeholder="42.50" required>
-      </div>
-    </div>
+        <div class="field-label-row">
+          <label for="datetime">Date &amp; time</label>
+          <button type="button" id="advanced-toggle" class="icon-btn" title="Advanced"
+            aria-label="Advanced" aria-expanded="false" aria-controls="advanced-panel">⚙</button>
+        </div>
 
-    <div class="field">
-      <label for="location">Location</label>
-      <div class="location-row">
-        <input type="text" id="location" name="location" placeholder="Tap 📍 or enter manually">
-        <button type="button" id="locate-btn" title="Refresh current location" aria-label="Refresh current location">📍</button>
-      </div>
-      <p id="location-status" class="hint"></p>
-      <div id="nearby-stations" class="nearby-stations" hidden></div>
-      <div id="missing-data-notice" class="missing-notice" hidden></div>
-    </div>
+        <div id="advanced-panel" class="advanced-panel collapsible" hidden>
+          <div class="collapse-inner">
+            <div class="field">
+              <label for="entry-id-field">Entry ID</label>
+              <input type="text" id="entry-id-field" readonly placeholder="(assigned on save)">
+            </div>
 
-    <button type="submit" class="primary-btn" id="submit-btn">Add fill-up</button>
-    <button type="button" id="delete-entry-btn" class="delete-link-btn" hidden>Delete this fill-up</button>
-  </form>
+            <div class="row">
+              <div class="field">
+                <label for="lat-field">Latitude</label>
+                <input type="text" id="lat-field" inputmode="decimal" placeholder="—">
+              </div>
+              <div class="field">
+                <label for="lon-field">Longitude</label>
+                <input type="text" id="lon-field" inputmode="decimal" placeholder="—">
+              </div>
+            </div>
 
-  <section class="log-section" aria-label="Fill-up history">
-    <p id="log-meta" class="log-meta" hidden></p>
-    <ul id="entries-list" class="entries"></ul>
-    <p id="empty-state" class="hint">No fill-ups logged yet.</p>
-    <section id="mpg-trend" class="mpg-trend" hidden aria-labelledby="mpg-trend-heading">
-      <div class="mpg-trend-head">
-        <h3 id="mpg-trend-heading">MPG trend</h3>
-        <p id="mpg-trend-avg" class="mpg-trend-avg"></p>
+            <div class="field">
+              <label for="source-field">Location source</label>
+              <select id="source-field">
+                <option value="">Unknown</option>
+                <option value="photo">Photo</option>
+                <option value="gps">GPS</option>
+                <option value="manual">Typed manually</option>
+              </select>
+            </div>
+
+            <button type="button" id="import-photo-btn" class="secondary-outline-btn">📷 Fill date &amp; location from photo</button>
+            <input type="file" id="photo-input" accept="image/*" hidden>
+            <p id="photo-status" class="hint" hidden></p>
+          </div>
+        </div>
+
+        <input type="datetime-local" id="datetime" name="datetime" required>
       </div>
-      <div id="mpg-trend-chart" class="mpg-trend-chart" role="img"></div>
+
+      <div class="field">
+        <label for="mileage">Mileage (odometer)</label>
+        <input type="number" id="mileage" name="mileage" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 45210" required>
+        <p id="mpg-preview" class="hint" hidden></p>
+        <p id="mileage-bounds-warning" class="hint" hidden></p>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="pricePerGallon">Price / gallon</label>
+          <div class="price-input-row">
+            <input type="text" id="pricePerGallon" name="pricePerGallon" inputmode="numeric" placeholder="3.49" required>
+            <span class="price-suffix" aria-hidden="true">9</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="totalCost">Total cost</label>
+          <input type="text" id="totalCost" name="totalCost" inputmode="numeric" placeholder="42.50" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="location">Location</label>
+        <div class="location-row">
+          <input type="text" id="location" name="location" placeholder="Tap 📍 or enter manually">
+          <button type="button" id="locate-btn" title="Refresh current location" aria-label="Refresh current location">📍</button>
+        </div>
+        <p id="location-status" class="hint"></p>
+        <div id="nearby-stations" class="nearby-stations" hidden></div>
+        <div id="missing-data-notice" class="missing-notice" hidden></div>
+      </div>
+
+      <button type="submit" class="primary-btn" id="submit-btn">Add fill-up</button>
+      <button type="button" id="delete-entry-btn" class="delete-link-btn" hidden>Delete this fill-up</button>
+    </form>
+
+    <section class="log-section" aria-label="Fill-up history">
+      <div id="log-meta" class="log-meta" hidden>
+        <p class="log-meta-label">All time</p>
+        <p id="log-meta-summary" class="log-meta-summary"></p>
+      </div>
+      <ul id="entries-list" class="entries"></ul>
+      <p id="empty-state" class="hint">No fill-ups logged yet.</p>
     </section>
+
+    <div class="app-footer-actions">
+      <button type="button" id="export-btn" class="link-btn">Export CSV</button>
+      <button type="button" id="import-btn" class="link-btn">Import CSV</button>
+      <input type="file" id="import-csv-input" accept=".csv,text/csv,text/plain" hidden>
+    </div>
+    <p id="import-status" class="hint import-status" hidden></p>
   </section>
 
-  <div class="app-footer-actions">
-    <button type="button" id="export-btn" class="link-btn">Export CSV</button>
-    <button type="button" id="import-btn" class="link-btn">Import CSV</button>
-    <input type="file" id="import-csv-input" accept=".csv,text/csv,text/plain" hidden>
-  </div>
-  <p id="import-status" class="hint import-status" hidden></p>
+  <section id="page-trends" class="page" hidden aria-label="Trends">
+    <p id="trends-empty" class="hint trends-empty">Add a few fill-ups to see MPG, price, and miles trends.</p>
+    <div id="trends-content" class="trends-content" hidden>
+      <article id="chart-mpg" class="trend-chart" hidden aria-labelledby="chart-mpg-heading">
+        <div class="trend-chart-head">
+          <h2 id="chart-mpg-heading">MPG</h2>
+          <p id="chart-mpg-avg" class="trend-chart-avg"></p>
+        </div>
+        <div id="chart-mpg-body" class="trend-chart-body" role="img"></div>
+      </article>
+
+      <article id="chart-miles" class="trend-chart" hidden aria-labelledby="chart-miles-heading">
+        <div class="trend-chart-head">
+          <h2 id="chart-miles-heading">Miles per fill-up</h2>
+          <p id="chart-miles-avg" class="trend-chart-avg"></p>
+        </div>
+        <div id="chart-miles-body" class="trend-chart-body" role="img"></div>
+      </article>
+
+      <article id="chart-price" class="trend-chart" hidden aria-labelledby="chart-price-heading">
+        <div class="trend-chart-head">
+          <h2 id="chart-price-heading">Price / gallon</h2>
+          <p id="chart-price-avg" class="trend-chart-avg"></p>
+        </div>
+        <div id="chart-price-body" class="trend-chart-body" role="img"></div>
+      </article>
+    </div>
+  </section>
 
   <footer class="app-footer">
     <span class="app-footer-version"><span id="app-version"></span> · <span id="storage-usage"></span></span>
   </footer>
 </main>
+
+<nav class="app-nav" aria-label="Main">
+  <button type="button" id="nav-log" class="nav-tab is-active" aria-current="page">Log</button>
+  <button type="button" id="nav-trends" class="nav-tab">Trends</button>
+</nav>
 
 </div>
 

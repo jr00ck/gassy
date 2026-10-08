@@ -43,16 +43,20 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.13.0', () => {
+test('boots without errors and shows v1.14.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.13.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.14.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
   assert.equal(d.getElementById('rotate-gate'), null);
   assert.ok(d.querySelector('.app-footer-actions #export-btn'));
   assert.ok(d.querySelector('.app-footer-actions #import-btn'));
+  assert.ok(d.getElementById('nav-log'));
+  assert.ok(d.getElementById('nav-trends'));
+  assert.equal(d.getElementById('page-log').hidden, false);
+  assert.equal(d.getElementById('page-trends').hidden, true);
 });
 
 test('Updated badge renders release notes as a bullet list', () => {
@@ -65,9 +69,9 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.13\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
-  assert.ok(items.length >= 2);
+  assert.ok(items.length >= 3);
   assert.ok(items.every((t) => t.trim().length > 0));
   badge.click();
   assert.equal(panel.hidden, true);
@@ -129,7 +133,9 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   assert.equal(d.getElementById('export-btn').disabled, false);
   assert.match(d.getElementById('mileage').placeholder, /^≈/);
   // One MPG sample isn't enough for a trend line yet.
-  assert.equal(d.getElementById('mpg-trend').hidden, true);
+  assert.equal(d.getElementById('chart-mpg').hidden, true);
+  assert.match(d.getElementById('log-meta-summary').textContent, /2 fill-ups/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
 
   d.getElementById('mileage').value = '5000';
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -151,10 +157,27 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
-  const trend = d.getElementById('mpg-trend');
-  assert.equal(trend.hidden, false);
-  assert.match(d.getElementById('mpg-trend-avg').textContent, /mpg/i);
-  assert.ok(d.querySelector('#mpg-trend-chart svg'));
+  assert.equal(d.getElementById('chart-mpg').hidden, false);
+  assert.match(d.getElementById('chart-mpg-avg').textContent, /mpg/i);
+  assert.ok(d.querySelector('#chart-mpg-body svg'));
+  assert.match(d.getElementById('chart-mpg-body').textContent, /high/i);
+  assert.match(d.getElementById('chart-mpg-body').textContent, /low/i);
+  assert.equal(d.getElementById('chart-price').hidden, false);
+  assert.ok(d.querySelector('#chart-price-body svg'));
+  assert.equal(d.getElementById('chart-miles').hidden, false);
+  assert.ok(d.querySelector('#chart-miles-body svg'));
+  assert.match(d.getElementById('log-meta-summary').textContent, /3 fill-ups/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
+  assert.match(d.querySelector('.month-summary').textContent, /mpg avg/);
+
+  d.getElementById('nav-trends').click();
+  assert.equal(d.getElementById('page-log').hidden, true);
+  assert.equal(d.getElementById('page-trends').hidden, false);
+  assert.equal(d.getElementById('nav-trends').getAttribute('aria-current'), 'page');
+  d.getElementById('nav-log').click();
+  assert.equal(d.getElementById('page-log').hidden, false);
+  assert.equal(d.getElementById('page-trends').hidden, true);
 
   let blob;
   w.URL.createObjectURL = (b) => {
@@ -258,16 +281,88 @@ test('cancelling edit during a lookup ignores the late result', async () => {
 
   d.querySelector('.entry').click();
   d.getElementById('locate-btn').click();
-  assert.equal(d.getElementById('location').value, 'Locating…');
+  assert.equal(d.getElementById('location').value, 'Saved Station');
+  assert.match(d.getElementById('location-status').textContent, /Locating/);
+  assert.equal(d.getElementById('locate-btn').classList.contains('is-locating'), true);
+  assert.equal(d.getElementById('locate-btn').getAttribute('aria-busy'), 'true');
   assert.equal(d.getElementById('submit-btn').disabled, true);
   d.getElementById('cancel-edit-btn').click();
   assert.equal(d.getElementById('submit-btn').textContent, 'Add fill-up');
   assert.equal(d.getElementById('location').value, '');
+  assert.equal(d.getElementById('locate-btn').classList.contains('is-locating'), false);
   release();
   await pending;
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(d.getElementById('location').value, '');
   assert.equal(d.getElementById('submit-btn').disabled, false);
+});
+
+test('auto-locates once when starting a new fill-up, not again on later blurs', async () => {
+  const { d, w } = boot();
+  let gpsCalled = 0;
+  w.navigator.geolocation = {
+    getCurrentPosition(_success, error) {
+      gpsCalled += 1;
+      // Finish the attempt so later pin taps aren't blocked by isLocating.
+      error({ code: 1, message: 'denied' });
+    },
+  };
+
+  // App open / untouched form should not locate.
+  assert.equal(gpsCalled, 0);
+
+  const mileage = d.getElementById('mileage');
+  mileage.focus();
+  mileage.value = '10000';
+  mileage.dispatchEvent(new w.Event('blur', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(gpsCalled, 1);
+  assert.match(d.getElementById('location-status').textContent, /unavailable|manually/i);
+
+  // Later field edits must not re-fire, even while location is still empty.
+  const price = d.getElementById('pricePerGallon');
+  price.focus();
+  price.value = '3.49';
+  price.dispatchEvent(new w.Event('blur', { bubbles: true }));
+  const total = d.getElementById('totalCost');
+  total.focus();
+  total.value = '40.00';
+  total.dispatchEvent(new w.Event('blur', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(gpsCalled, 1);
+
+  // Manual pin still works after the one-shot auto attempt.
+  d.getElementById('locate-btn').click();
+  assert.equal(gpsCalled, 2);
+});
+
+test('Trends charts list Miles directly under MPG', () => {
+  const order = [...html.matchAll(/id="(chart-(?:mpg|miles|price))"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['chart-mpg', 'chart-miles', 'chart-price']);
+});
+
+test('mileage upper bound allows historically normal fill-up intervals', () => {
+  // Avg MPG × max gallons alone would cap ~365 mi, but a past 400 mi trip
+  // must still be within the soft upper bound.
+  const seed = [
+    { id: 'b1', datetime: '2026-08-01T12:00', mileage: 30000, pricePerGallon: 4.149, totalCost: 41.49, location: '', lat: null, lon: null, source: null },
+    { id: 'b2', datetime: '2026-08-15T12:00', mileage: 30300, pricePerGallon: 4.149, totalCost: 41.49, location: '', lat: null, lon: null, source: null },
+    { id: 'b3', datetime: '2026-09-01T12:00', mileage: 30700, pricePerGallon: 4.149, totalCost: 41.49, location: '', lat: null, lon: null, source: null },
+  ];
+  const { d, w } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
+  });
+  // Last = 30700; next at +400 (same as longest past interval) should not warn.
+  d.getElementById('datetime').value = '2026-09-15T12:00';
+  d.getElementById('mileage').value = '31100';
+  d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(d.getElementById('mileage-bounds-warning').hidden, true);
+
+  // Far beyond history + tank estimate should still warn.
+  d.getElementById('mileage').value = '32000';
+  d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(d.getElementById('mileage-bounds-warning').hidden, false);
+  assert.match(d.getElementById('mileage-bounds-warning').textContent, /full tank/i);
 });
 
 test('failed lookup recovers instead of staying stuck', async () => {
@@ -417,11 +512,15 @@ test('long log starts fully collapsed; adding a fill-up reveals that month', asy
 
   const groups = [...d.querySelectorAll('.month-group')];
   assert.equal(groups.length, 6);
-  assert.equal(d.getElementById('log-meta').textContent, '6 fill-ups');
+  assert.match(d.getElementById('log-meta-summary').textContent, /6 fill-ups/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
   assert.ok(groups.every((g) => !g.classList.contains('is-open')));
   assert.ok(groups.every((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'false'));
   assert.match(groups[0].querySelector('.month-summary').textContent, /fill-up/);
   assert.match(groups[0].querySelector('.month-summary').textContent, /\$/);
+  assert.match(groups[0].querySelector('.month-summary').textContent, /mpg avg/);
 
   const toggle = groups[0].querySelector('.month-toggle');
   toggle.click();
