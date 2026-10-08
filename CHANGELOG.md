@@ -4,6 +4,11 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
+## [1.12.1] - 2026-10-08
+
+### Bug Fixes
+
+- Animate panel collapse, stop auto-filling distant stations
 ## [1.12.0] - 2026-10-08
 
 ### Features
