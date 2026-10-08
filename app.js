@@ -36,6 +36,9 @@ let lastLocationSource = null; // 'photo' | 'gps' | 'manual' | null
 let currentLocationLabel = '';
 let isLocating = false;
 let preLocateValue = '';
+// Bumped when the form is reset or a different entry is loaded, so an
+// in-flight lookup can't write its result into whatever is on screen now.
+let locateGeneration = 0;
 
 // Base prediction for the fill-up being started (mileage/price/total), or
 // null when there isn't enough history yet. Recomputed each time a new-entry
@@ -129,7 +132,8 @@ function abbrState(a) {
 function loadEntries() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -171,12 +175,13 @@ function fmtBytes(bytes) {
 // estimate of on-device footprint, not an exact browser-reported figure
 // (no such API exists), but close enough to be informational.
 function updateStorageUsageBadge() {
-  let chars = 0;
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    chars += key.length + (localStorage.getItem(key) || '').length;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY) || '';
+    const chars = STORAGE_KEY.length + raw.length;
+    storageUsageEl.textContent = `${fmtBytes(chars * 2)} on device`;
+  } catch {
+    storageUsageEl.textContent = '';
   }
-  storageUsageEl.textContent = `${fmtBytes(chars * 2)} on device`;
 }
 
 // Prices are stored with the trailing 9/10-cent digit (e.g. 3.999 for a
@@ -200,7 +205,10 @@ function escapeHtml(str) {
 // convention as GasBuddy and most pump displays.
 function getPricePerGallon() {
   const p = parseFloat(priceInput.value);
-  return isFinite(p) ? p + 0.009 : NaN;
+  if (!isFinite(p)) return NaN;
+  // 3.59 + 0.009 is 3.5989999999999998 in IEEE floats. Round to the tenth
+  // of a cent so the stored price and the CSV stay at 3.599.
+  return Math.round((p + 0.009) * 1000) / 1000;
 }
 
 // Auto-decimal currency entry: digits shift in from the right (like a POS
@@ -234,15 +242,23 @@ function fmtDistance(meters) {
   return feet < 1000 ? `${Math.round(feet)} ft` : `${(meters / 1609.34).toFixed(1)} mi`;
 }
 
+// Map APIs sometimes never answer. Without a timeout the form stays on
+// "Locating…" with submit disabled, and locate() ignores further taps.
+function fetchWithTimeout(url, ms = 12000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
 async function findNearbyFuelStations(lat, lon, radiusMeters) {
   // Larger stations (travel centers, big-box fuel plazas) are often mapped in
   // OSM as a way/relation (an area) rather than a single node — "nwr" plus
   // "out center" covers those too, using the area's centroid as its point.
   const query = `[out:json][timeout:8];nwr["amenity"="fuel"](around:${radiusMeters},${lat},${lon});out center;`;
-  const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+  const res = await fetchWithTimeout(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
   if (!res.ok) throw new Error('overpass failed');
   const data = await res.json();
-  return (data.elements || [])
+  const stations = (data.elements || [])
     .map((el) => {
       const elLat = el.lat ?? el.center?.lat;
       const elLon = el.lon ?? el.center?.lon;
@@ -256,6 +272,14 @@ async function findNearbyFuelStations(lat, lon, radiusMeters) {
     })
     .filter(Boolean)
     .sort((a, b) => a.distance - b.distance);
+  // A station mapped as both a node and a way shows up twice. Keep the closer
+  // point when the name matches and the two are essentially the same place.
+  const unique = [];
+  for (const s of stations) {
+    const dup = unique.find((o) => o.name === s.name && distanceMeters(o.lat, o.lon, s.lat, s.lon) < 50);
+    if (!dup) unique.push(s);
+  }
+  return unique;
 }
 
 // Meters. Tight pass covers a station's footprint plus realistic GPS drift;
@@ -274,7 +298,7 @@ async function findNearbyFuelStationsExpanding(lat, lon) {
 
 async function fetchStreetAddress(lat, lon) {
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`
     );
     if (!res.ok) return '';
@@ -299,11 +323,14 @@ function renderNearbyStations(stations, cityState) {
     chip.className = 'station-chip';
     chip.textContent = `${s.name} · ${fmtDistance(s.distance)}`;
     chip.addEventListener('click', async () => {
+      const generation = locateGeneration;
       locationInput.value = [s.name, cityState].filter(Boolean).join(', ');
       locationInput.dataset.lat = s.lat;
       locationInput.dataset.lon = s.lon;
       missingDataNotice.hidden = true;
-      setLocationLine(currentLocationLabel, await fetchStreetAddress(s.lat, s.lon));
+      const address = await fetchStreetAddress(s.lat, s.lon);
+      if (generation !== locateGeneration) return;
+      setLocationLine(currentLocationLabel, address);
       syncAdvancedFields();
     });
     nearbyStationsEl.appendChild(chip);
@@ -311,6 +338,8 @@ function renderNearbyStations(stations, cityState) {
 }
 
 async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
+  const generation = locateGeneration;
+  const stale = () => generation !== locateGeneration;
   beginLocating();
   locationInput.dataset.lat = latitude;
   locationInput.dataset.lon = longitude;
@@ -318,15 +347,18 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
     );
+    if (stale()) return;
     if (!res.ok) throw new Error('reverse geocode failed');
     const data = await res.json();
+    if (stale()) return;
     const a = data.address || {};
     const city = a.city || a.town || a.village || a.hamlet || '';
     const state = abbrState(a);
     const cityState = [city, state].filter(Boolean).join(', ');
+    const street = [a.house_number, a.road].filter(Boolean).join(' ');
 
     if (data.type === 'fuel') {
       // Nominatim's own point already resolved to a fuel station — trust it
@@ -334,7 +366,7 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
       // what's already correct. (`address.amenity` holds the business NAME,
       // not the tag type — the reliable signal is the top-level `type`.)
       locationInput.value = [a.amenity, cityState].filter(Boolean).join(', ');
-      setLocationLine(foundLabel, [a.house_number, a.road].filter(Boolean).join(' '));
+      setLocationLine(foundLabel, street);
       return;
     }
 
@@ -344,12 +376,19 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
     // shown instead of the actual station you're standing at.
     try {
       const { stations, radius } = await findNearbyFuelStationsExpanding(latitude, longitude);
+      if (stale()) return;
       if (stations.length) {
         const best = stations[0];
         locationInput.value = [best.name, cityState].filter(Boolean).join(', ');
         locationInput.dataset.lat = best.lat;
         locationInput.dataset.lon = best.lon;
-        let address = await fetchStreetAddress(best.lat, best.lon);
+        // Nominatim allows about one request per second. The station we just
+        // picked is the place we already geocoded, so reuse that street
+        // instead of firing a second reverse lookup immediately.
+        let address = best.distance <= 80 && street
+          ? street
+          : await fetchStreetAddress(best.lat, best.lon);
+        if (stale()) return;
         // The wide-net pass found nothing close by — flag the distance so a
         // lone, possibly-imprecise match isn't shown with false confidence.
         if (radius > FUEL_SEARCH_RADIUS_M) {
@@ -361,6 +400,7 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
       }
     } catch {
       // Overpass unavailable — fall through to Nominatim's own match below.
+      if (stale()) return;
     }
 
     // No fuel station found nearby, even after widening the search — this is
@@ -371,11 +411,14 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
     locationInput.value = label || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     setLocationLine('No gas station found nearby', '');
   } catch {
+    if (stale()) return;
     locationInput.value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     setLocationLine(offlineLabel, '');
   } finally {
-    syncAdvancedFields();
-    endLocating();
+    if (!stale()) {
+      syncAdvancedFields();
+      endLocating();
+    }
   }
 }
 
@@ -393,15 +436,29 @@ function locate() {
     if (isFinite(savedLat) && isFinite(savedLon)) {
       return reverseGeocode(savedLat, savedLon, 'Saved location', 'Saved location (offline — coordinates only)');
     }
+    // No saved GPS — a typed place name is the only location we have. Don't
+    // silently overwrite it with wherever the phone is now; ask first. An
+    // empty field can still take live GPS without a prompt.
+    if (locationInput.value.trim()) {
+      const ok = confirm(
+        'This fill-up has no saved GPS coordinates.\n\nReplace the typed location with your current location?'
+      );
+      if (!ok) {
+        locationStatus.textContent = 'Kept typed location — add coordinates under Advanced, or clear the field and tap 📍';
+        return;
+      }
+    }
   }
 
   if (!('geolocation' in navigator)) {
     locationStatus.textContent = 'Geolocation not supported — enter manually';
     return;
   }
+  const generation = locateGeneration;
   beginLocating();
   navigator.geolocation.getCurrentPosition(
     (pos) => {
+      if (generation !== locateGeneration) return;
       lastLocationSource = 'gps';
       return reverseGeocode(
         pos.coords.latitude,
@@ -411,6 +468,7 @@ function locate() {
       );
     },
     () => {
+      if (generation !== locateGeneration) return;
       cancelLocating();
       locationStatus.textContent = 'Location unavailable — enter manually';
     },
@@ -591,7 +649,16 @@ function computePredictions() {
   const price = lastEntry.pricePerGallon;
   const totalCost = gallons * price;
 
-  return { previousMileage, avgMpg, lowerBound, upperBound, mileage, price, totalCost };
+  return {
+    previousMileage,
+    avgMpg,
+    lowerBound,
+    upperBound,
+    mileage,
+    price,
+    totalCost,
+    latestDatetime: lastEntry.datetime,
+  };
 }
 
 // Non-blocking: the tank-capacity bound is a heuristic (biggest fill-up on
@@ -599,6 +666,16 @@ function computePredictions() {
 // rather than stopped.
 function updateMileageBoundsWarning(mileage) {
   if (editingId || !currentPredictions || !isFinite(mileage)) {
+    mileageBoundsWarning.hidden = true;
+    return;
+  }
+  // Bounds describe the next fill-up after the newest one. A backdated
+  // entry is a real earlier reading, so this warning would be a false alarm.
+  if (
+    datetimeInput.value &&
+    currentPredictions.latestDatetime &&
+    new Date(datetimeInput.value) < new Date(currentPredictions.latestDatetime)
+  ) {
     mileageBoundsWarning.hidden = true;
     return;
   }
@@ -637,6 +714,7 @@ function render() {
   const entries = loadEntries().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
   entriesList.innerHTML = '';
   emptyState.style.display = entries.length ? 'none' : 'block';
+  exportBtn.disabled = entries.length === 0;
   updateStorageUsageBadge();
 
   entries.forEach((entry) => {
@@ -703,7 +781,14 @@ function updateMpgPreview() {
   updateMileageBoundsWarning(mileage);
 }
 
+function clearPhotoStatus() {
+  photoStatus.hidden = true;
+  photoStatus.textContent = '';
+}
+
 function resetToNewEntry() {
+  locateGeneration++;
+  if (isLocating) endLocating();
   editingId = null;
   form.reset();
   setDefaultDatetime();
@@ -712,6 +797,7 @@ function resetToNewEntry() {
   deleteEntryBtn.hidden = true;
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
+  clearPhotoStatus();
   advancedPanel.hidden = true;
   mpgPreview.hidden = true;
   applyPredictedPlaceholders();
@@ -739,6 +825,9 @@ function checkMissingLocationData(entry) {
 }
 
 async function loadEntryIntoForm(entry) {
+  locateGeneration++;
+  if (isLocating) endLocating();
+  const generation = locateGeneration;
   editingId = entry.id;
   currentPredictions = null;
   currentTotalGuess = null;
@@ -756,6 +845,7 @@ async function loadEntryIntoForm(entry) {
   lastLocationSource = entry.source || null;
   setLocationLine('', '');
   renderNearbyStations([]);
+  clearPhotoStatus();
 
   submitBtn.textContent = 'Update fill-up';
   editBannerText.textContent = `Editing fill-up from ${fmtDate(entry.datetime)}`;
@@ -769,7 +859,9 @@ async function loadEntryIntoForm(entry) {
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   if (entry.lat != null && entry.lon != null) {
-    setLocationLine('Saved location', await fetchStreetAddress(entry.lat, entry.lon));
+    const address = await fetchStreetAddress(entry.lat, entry.lon);
+    if (generation !== locateGeneration) return;
+    setLocationLine('Saved location', address);
   }
 }
 
@@ -793,7 +885,13 @@ form.addEventListener('submit', (e) => {
   } else {
     entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...data });
   }
-  saveEntries(entries);
+  try {
+    saveEntries(entries);
+  } catch {
+    missingDataNotice.hidden = false;
+    missingDataNotice.textContent = 'Could not save this fill-up — device storage is full. Export a backup, then delete older entries.';
+    return;
+  }
 
   resetToNewEntry();
   render();
@@ -848,11 +946,13 @@ photoInput.addEventListener('change', async () => {
   const file = photoInput.files[0];
   photoInput.value = '';
   if (!file) return;
+  const generation = locateGeneration;
 
   photoStatus.hidden = false;
   photoStatus.textContent = 'Reading photo…';
   try {
     const exif = readExif(await file.arrayBuffer());
+    if (generation !== locateGeneration) return;
     const dateStr = exif && (exif.dateTimeOriginal || exif.dateTime);
     const inputValue = exifDateToInputValue(dateStr);
     if (inputValue) datetimeInput.value = inputValue;
@@ -866,6 +966,7 @@ photoInput.addEventListener('change', async () => {
         'From photo location (offline — coordinates only)'
       );
     }
+    if (generation !== locateGeneration) return;
 
     if (inputValue && exif.gps) {
       photoStatus.textContent = 'Filled date & location from photo';
@@ -877,9 +978,19 @@ photoInput.addEventListener('change', async () => {
       photoStatus.textContent = 'No date or location data found in this photo';
     }
   } catch {
+    if (generation !== locateGeneration) return;
     photoStatus.textContent = 'Could not read this photo — enter details manually';
   }
 });
+
+function csvField(value) {
+  let s = value == null ? '' : String(value);
+  // Stop spreadsheet apps from treating a location like "=1+1" as a formula.
+  // Only user-typed strings — numeric fields such as longitude are negative.
+  if (typeof value === 'string' && /^[=+\-@]/.test(s)) s = `'${s}`;
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
 
 exportBtn.addEventListener('click', () => {
   const entries = loadEntries().sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
@@ -887,7 +998,8 @@ exportBtn.addEventListener('click', () => {
   const header = ['datetime', 'mileage', 'price_per_gallon', 'total_cost', 'gallons', 'location', 'latitude', 'longitude'];
   const rows = entries.map((e) => {
     const gallons = e.pricePerGallon > 0 ? (e.totalCost / e.pricePerGallon).toFixed(3) : '';
-    return [e.datetime, e.mileage, e.pricePerGallon, e.totalCost, gallons, `"${(e.location || '').replace(/"/g, '""')}"`, e.lat ?? '', e.lon ?? ''].join(',');
+    const price = isFinite(e.pricePerGallon) ? Number(e.pricePerGallon).toFixed(3) : '';
+    return [e.datetime, e.mileage, price, e.totalCost, gallons, e.location || '', e.lat ?? '', e.lon ?? ''].map(csvField).join(',');
   });
   const csv = [header.join(','), ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -905,8 +1017,8 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.9.0';
-const RELEASE_NOTES = 'Mileage, price/gallon, and total cost placeholders now show a predicted value (based on your fill-up history) instead of a generic example — purely a hint, so it never gets saved unless you type it in yourself. The footer also now shows roughly how much on-device storage the log is using.';
+const APP_VERSION = '1.10.0';
+const RELEASE_NOTES = 'More reliable updates and location lookup: pull-to-refresh grabs the latest version on the first pull, hung map lookups no longer leave the form stuck, and editing a fill-up without saved GPS won\'t silently overwrite a typed place name. Also: safer CSV export, clearer storage errors, and the Advanced panel now pushes the date/time field down when opened.';
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;

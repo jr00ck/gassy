@@ -308,7 +308,7 @@ input[readonly] {
   border: 1px dashed var(--card-border);
   border-radius: 12px;
   padding: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .advanced-panel .field:last-of-type {
@@ -350,6 +350,11 @@ input[readonly] {
   font-size: 0.85rem;
   cursor: pointer;
   padding: 4px;
+}
+
+.link-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .entries {
@@ -482,5 +487,4 @@ input[readonly] {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-dim);
-  opacity: 0.45;
 }
