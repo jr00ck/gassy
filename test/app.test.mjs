@@ -43,12 +43,31 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.10.0', () => {
+test('boots without errors and shows v1.11.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.10.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.11.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
+});
+
+test('Updated badge renders release notes as a bullet list', () => {
+  const { d } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.10.0');
+  });
+  const badge = d.getElementById('updated-badge');
+  const panel = d.getElementById('whats-new');
+  assert.equal(badge.hidden, false);
+  badge.click();
+  assert.equal(panel.hidden, false);
+  assert.equal(badge.getAttribute('aria-expanded'), 'true');
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.11\.0/);
+  const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
+  assert.ok(items.length >= 3);
+  assert.ok(items.every((t) => t.trim().length > 0));
+  badge.click();
+  assert.equal(panel.hidden, true);
+  assert.equal(badge.getAttribute('aria-expanded'), 'false');
 });
 
 test('footer CSS no longer stacks opacity on already-dim text', () => {
@@ -94,8 +113,12 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   assert.match(list, /\$45\.00/);
   assert.match(list, /\$40\.00/);
   assert.match(list, /mpg/i);
+  assert.ok(d.querySelector('.month-group'));
+  assert.ok(d.querySelector('.month-toggle'));
   assert.equal(d.getElementById('export-btn').disabled, false);
   assert.match(d.getElementById('mileage').placeholder, /^≈/);
+  // One MPG sample isn't enough for a trend line yet.
+  assert.equal(d.getElementById('mpg-trend').hidden, true);
 
   d.getElementById('mileage').value = '5000';
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -117,6 +140,10 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
+  const trend = d.getElementById('mpg-trend');
+  assert.equal(trend.hidden, false);
+  assert.match(d.getElementById('mpg-trend-avg').textContent, /mpg/i);
+  assert.ok(d.querySelector('#mpg-trend-chart svg'));
 
   let blob;
   w.URL.createObjectURL = (b) => {
@@ -250,6 +277,59 @@ test('editing without saved GPS asks before replacing a typed location', async (
   d.getElementById('locate-btn').click();
   assert.equal(gpsCalled, true);
   await new Promise((r) => setTimeout(r, 20));
+});
+
+test('long log collapses older months and keeps recent ones open', () => {
+  const { d, w } = boot();
+  const fills = [
+    { datetime: '2026-05-10T12:00', mileage: '10000', priceDigits: '349', totalDigits: '4000' },
+    { datetime: '2026-06-10T12:00', mileage: '10300', priceDigits: '349', totalDigits: '4000' },
+    { datetime: '2026-07-10T12:00', mileage: '10600', priceDigits: '349', totalDigits: '4000' },
+    { datetime: '2026-08-10T12:00', mileage: '10900', priceDigits: '349', totalDigits: '4000' },
+    { datetime: '2026-09-10T12:00', mileage: '11200', priceDigits: '349', totalDigits: '4000' },
+    { datetime: '2026-10-10T12:00', mileage: '11500', priceDigits: '349', totalDigits: '4000' },
+  ];
+  for (const fillData of fills) {
+    fill(w, d, fillData);
+    d.getElementById('submit-btn').click();
+  }
+
+  const groups = [...d.querySelectorAll('.month-group')];
+  assert.equal(groups.length, 6);
+  const expanded = groups.filter((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'true');
+  const collapsed = groups.filter((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'false');
+  assert.equal(expanded.length, 3);
+  assert.equal(collapsed.length, 3);
+  assert.match(groups[0].querySelector('.month-summary').textContent, /fill-up/);
+  assert.match(groups[0].querySelector('.month-summary').textContent, /\$/);
+
+  const toggle = collapsed[0].querySelector('.month-toggle');
+  const nested = collapsed[0].querySelector('.month-entries');
+  assert.equal(nested.hidden, true);
+  toggle.click();
+  assert.equal(nested.hidden, false);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+});
+
+test('accessibility helpers: entry keyboard open and reduced-motion CSS', () => {
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /:focus-visible/);
+  assert.match(css, /min-height:\s*44px/);
+
+  const { d, w } = boot();
+  fill(w, d, {
+    datetime: '2026-10-01T12:00',
+    mileage: '10000',
+    priceDigits: '349',
+    totalDigits: '4000',
+    location: 'Shell',
+  });
+  d.getElementById('submit-btn').click();
+  const entry = d.querySelector('.entry');
+  assert.equal(entry.getAttribute('role'), 'button');
+  assert.equal(entry.tabIndex, 0);
+  entry.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal(d.getElementById('submit-btn').textContent, 'Update fill-up');
 });
 
 test('editing without saved GPS can use live GPS when the field is empty', () => {

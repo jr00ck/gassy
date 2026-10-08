@@ -13,6 +13,9 @@ const locateBtn = document.getElementById('locate-btn');
 const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
 const exportBtn = document.getElementById('export-btn');
+const mpgTrendEl = document.getElementById('mpg-trend');
+const mpgTrendAvgEl = document.getElementById('mpg-trend-avg');
+const mpgTrendChartEl = document.getElementById('mpg-trend-chart');
 const storageUsageEl = document.getElementById('storage-usage');
 const importPhotoBtn = document.getElementById('import-photo-btn');
 const photoInput = document.getElementById('photo-input');
@@ -48,6 +51,20 @@ let currentPredictions = null;
 // actually typed so far — sharper than currentPredictions.totalCost once
 // either of those fields has real input.
 let currentTotalGuess = null;
+
+// How many newest calendar months stay expanded in the log by default.
+// (~2–4 fill-ups/month → keeping only the latest month open is too strict.)
+const OPEN_RECENT_MONTHS = 3;
+// User toggles for month groups during this session (monthKey → open?).
+const monthOpenOverrides = new Map();
+
+function prefersReducedMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function smoothScrollBehavior() {
+  return prefersReducedMotion() ? 'auto' : 'smooth';
+}
 
 // Shows loading feedback directly in the location field itself (not just the
 // status line below it), so a lookup started while the field already has a
@@ -710,6 +727,151 @@ function applyPredictedPlaceholders() {
   updateMileageBoundsWarning(parseFloat(mileageInput.value));
 }
 
+function monthKeyFromDatetime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'unknown';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabelFromKey(key) {
+  if (key === 'unknown') return 'Unknown date';
+  const [year, month] = key.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function groupEntriesByMonth(entriesNewestFirst) {
+  const groups = [];
+  const byKey = new Map();
+  for (const entry of entriesNewestFirst) {
+    const key = monthKeyFromDatetime(entry.datetime);
+    let group = byKey.get(key);
+    if (!group) {
+      group = { key, entries: [] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    group.entries.push(entry);
+  }
+  return groups;
+}
+
+function summarizeMonth(monthEntries) {
+  let spend = 0;
+  let gallons = 0;
+  let miles = 0;
+  for (const entry of monthEntries) {
+    spend += Number(entry.totalCost) || 0;
+    if (entry.pricePerGallon > 0) gallons += entry.totalCost / entry.pricePerGallon;
+    const prev = findPreviousEntry(entry.datetime, entry.id);
+    if (prev && entry.mileage > prev.mileage) miles += entry.mileage - prev.mileage;
+  }
+  return {
+    count: monthEntries.length,
+    spend,
+    miles,
+    avgPpg: gallons > 0 ? spend / gallons : null,
+  };
+}
+
+function isMonthOpen(key, index) {
+  if (monthOpenOverrides.has(key)) return monthOpenOverrides.get(key);
+  return index < OPEN_RECENT_MONTHS;
+}
+
+function createEntryElement(entry) {
+  const prev = findPreviousEntry(entry.datetime, entry.id);
+  const gallons = entry.pricePerGallon > 0 ? entry.totalCost / entry.pricePerGallon : 0;
+  const mpg = calcMpg(entry.mileage, gallons, prev && prev.mileage);
+
+  const li = document.createElement('li');
+  li.className = 'entry';
+  li.dataset.id = entry.id;
+  li.setAttribute('role', 'button');
+  li.tabIndex = 0;
+  li.setAttribute('aria-label', `Edit fill-up from ${fmtDate(entry.datetime)}, ${fmtMoney(entry.totalCost)}`);
+  li.innerHTML = `
+    <div class="entry-top">
+      <span class="entry-cost">${fmtMoney(entry.totalCost)}</span>
+      <span class="entry-date">${fmtDate(entry.datetime)}</span>
+    </div>
+    <div class="entry-details">
+      <span><b>${Number(entry.mileage).toLocaleString()}</b> mi</span>
+      <span><b>${fmtPricePerGallon(entry.pricePerGallon)}</b>/gal</span>
+      <span><b>${gallons.toFixed(2)}</b> gal</span>
+      ${mpg ? `<span><b>${mpg.toFixed(1)}</b> mpg</span>` : ''}
+    </div>
+    ${entry.location ? `<div class="entry-location">📍 ${escapeHtml(entry.location)}</div>` : ''}
+    <span class="entry-chevron" aria-hidden="true">›</span>
+  `;
+  return li;
+}
+
+// Per-fill MPG samples in chronological order (oldest → newest).
+function collectMpgSeries(entriesNewestFirst) {
+  const chronological = [...entriesNewestFirst].reverse();
+  const points = [];
+  for (let i = 1; i < chronological.length; i++) {
+    const cur = chronological[i];
+    const prev = chronological[i - 1];
+    const gallons = cur.pricePerGallon > 0 ? cur.totalCost / cur.pricePerGallon : 0;
+    const mpg = calcMpg(cur.mileage, gallons, prev.mileage);
+    if (mpg != null) points.push(mpg);
+  }
+  return points;
+}
+
+function renderMpgTrend(entriesNewestFirst) {
+  const series = collectMpgSeries(entriesNewestFirst);
+  if (series.length < 2) {
+    mpgTrendEl.hidden = true;
+    mpgTrendChartEl.innerHTML = '';
+    mpgTrendAvgEl.textContent = '';
+    return;
+  }
+
+  const recent = series.slice(-12);
+  const overallAvg = series.reduce((sum, n) => sum + n, 0) / series.length;
+  const recentAvg = recent.reduce((sum, n) => sum + n, 0) / recent.length;
+  mpgTrendAvgEl.textContent = `Avg ${overallAvg.toFixed(1)} mpg`;
+
+  const width = 280;
+  const height = 44;
+  const min = Math.min(...recent);
+  const max = Math.max(...recent);
+  const range = max - min || 1;
+  const coords = recent.map((value, i) => {
+    const x = recent.length === 1 ? width / 2 : (i / (recent.length - 1)) * width;
+    const y = height - 4 - ((value - min) / range) * (height - 8);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const last = recent[recent.length - 1];
+  const lastX = coords[coords.length - 1].split(',')[0];
+  const lastY = coords[coords.length - 1].split(',')[1];
+
+  mpgTrendChartEl.setAttribute(
+    'aria-label',
+    `MPG over the last ${recent.length} fill-ups. Latest ${last.toFixed(1)}, recent average ${recentAvg.toFixed(1)}, overall average ${overallAvg.toFixed(1)}.`
+  );
+  mpgTrendChartEl.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <polyline
+        fill="none"
+        stroke="rgba(255, 107, 53, 0.9)"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        points="${coords.join(' ')}"
+      />
+      <circle cx="${lastX}" cy="${lastY}" r="3.5" fill="#ff6b35" />
+    </svg>
+    <p class="mpg-trend-meta">Last ${recent.length} fill-ups · latest ${last.toFixed(1)} mpg</p>
+  `;
+  mpgTrendEl.hidden = false;
+}
+
 function render() {
   const entries = loadEntries().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
   entriesList.innerHTML = '';
@@ -717,30 +879,51 @@ function render() {
   exportBtn.disabled = entries.length === 0;
   updateStorageUsageBadge();
 
-  entries.forEach((entry) => {
-    const prev = findPreviousEntry(entry.datetime, entry.id);
-    const gallons = entry.pricePerGallon > 0 ? entry.totalCost / entry.pricePerGallon : 0;
-    const mpg = calcMpg(entry.mileage, gallons, prev && prev.mileage);
+  const groups = groupEntriesByMonth(entries);
+  groups.forEach((group, index) => {
+    const open = isMonthOpen(group.key, index);
+    const summary = summarizeMonth(group.entries);
+    const summaryBits = [
+      `${summary.count} fill-up${summary.count === 1 ? '' : 's'}`,
+      fmtMoney(summary.spend),
+      summary.miles > 0 ? `${Math.round(summary.miles).toLocaleString()} mi` : null,
+      summary.avgPpg != null ? `${fmtPricePerGallon(summary.avgPpg)}/gal avg` : null,
+    ].filter(Boolean);
 
-    const li = document.createElement('li');
-    li.className = 'entry';
-    li.dataset.id = entry.id;
-    li.innerHTML = `
-      <div class="entry-top">
-        <span class="entry-cost">${fmtMoney(entry.totalCost)}</span>
-        <span class="entry-date">${fmtDate(entry.datetime)}</span>
-      </div>
-      <div class="entry-details">
-        <span><b>${Number(entry.mileage).toLocaleString()}</b> mi</span>
-        <span><b>${fmtPricePerGallon(entry.pricePerGallon)}</b>/gal</span>
-        <span><b>${gallons.toFixed(2)}</b> gal</span>
-        ${mpg ? `<span><b>${mpg.toFixed(1)}</b> mpg</span>` : ''}
-      </div>
-      ${entry.location ? `<div class="entry-location">📍 ${escapeHtml(entry.location)}</div>` : ''}
-      <span class="entry-chevron">›</span>
+    const monthLi = document.createElement('li');
+    monthLi.className = 'month-group';
+    monthLi.dataset.monthKey = group.key;
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'month-toggle';
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.innerHTML = `
+      <span class="month-toggle-row">
+        <span class="month-label">${escapeHtml(monthLabelFromKey(group.key))}</span>
+        <span class="month-chevron" aria-hidden="true">▾</span>
+      </span>
+      <span class="month-summary">${escapeHtml(summaryBits.join(' · '))}</span>
     `;
-    entriesList.appendChild(li);
+
+    const monthEntries = document.createElement('ul');
+    monthEntries.className = 'month-entries';
+    monthEntries.hidden = !open;
+    group.entries.forEach((entry) => monthEntries.appendChild(createEntryElement(entry)));
+
+    toggle.addEventListener('click', () => {
+      const nextOpen = monthEntries.hidden;
+      monthEntries.hidden = !nextOpen;
+      toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+      monthOpenOverrides.set(group.key, nextOpen);
+    });
+
+    monthLi.appendChild(toggle);
+    monthLi.appendChild(monthEntries);
+    entriesList.appendChild(monthLi);
   });
+
+  renderMpgTrend(entries);
 }
 
 function updateMpgPreview() {
@@ -856,7 +1039,7 @@ async function loadEntryIntoForm(entry) {
   syncAdvancedFields();
   updateMpgPreview();
 
-  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  form.scrollIntoView({ behavior: smoothScrollBehavior(), block: 'start' });
 
   if (entry.lat != null && entry.lon != null) {
     const address = await fetchStreetAddress(entry.lat, entry.lon);
@@ -897,11 +1080,23 @@ form.addEventListener('submit', (e) => {
   render();
 });
 
-entriesList.addEventListener('click', (e) => {
-  const li = e.target.closest('.entry');
-  if (!li) return;
+function openEntryFromListTarget(target) {
+  const li = target && target.closest ? target.closest('.entry') : null;
+  if (!li || !entriesList.contains(li)) return;
   const entry = loadEntries().find((en) => en.id === li.dataset.id);
   if (entry) loadEntryIntoForm(entry);
+}
+
+entriesList.addEventListener('click', (e) => {
+  if (e.target.closest('.month-toggle')) return;
+  openEntryFromListTarget(e.target);
+});
+
+entriesList.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  if (!e.target.classList.contains('entry')) return;
+  e.preventDefault();
+  openEntryFromListTarget(e.target);
 });
 
 cancelEditBtn.addEventListener('click', resetToNewEntry);
@@ -1017,8 +1212,15 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.10.0';
-const RELEASE_NOTES = 'More reliable updates and location lookup: pull-to-refresh grabs the latest version on the first pull, hung map lookups no longer leave the form stuck, and editing a fill-up without saved GPS won\'t silently overwrite a typed place name. Also: safer CSV export, clearer storage errors, and the Advanced panel now pushes the date/time field down when opened.';
+const APP_VERSION = '1.11.0';
+// Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
+// Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
+const RELEASE_NOTES = [
+  'Fill-up log groups by calendar month, with older months collapsed and a compact spend / miles / $/gal summary on each header',
+  'MPG trend sparkline under the log, plus your overall average',
+  'What\'s new shows as a readable bullet list instead of one long paragraph',
+  'Accessibility: larger tap targets, clearer keyboard focus, and calmer pull-to-refresh when Reduce Motion is on',
+];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 document.getElementById('app-version').textContent = `v${APP_VERSION}`;
@@ -1032,13 +1234,19 @@ if (lastSeenVersion && lastSeenVersion !== APP_VERSION) {
 }
 localStorage.setItem(LAST_SEEN_KEY, APP_VERSION);
 
+function renderWhatsNew() {
+  const items = RELEASE_NOTES.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
+  whatsNewEl.innerHTML = `
+    <p class="whats-new-title">What's new in v${escapeHtml(APP_VERSION)}</p>
+    <ul class="whats-new-list">${items}</ul>
+  `;
+}
+
 updatedBadge.addEventListener('click', () => {
-  if (whatsNewEl.hidden) {
-    whatsNewEl.textContent = RELEASE_NOTES;
-    whatsNewEl.hidden = false;
-  } else {
-    whatsNewEl.hidden = true;
-  }
+  const opening = whatsNewEl.hidden;
+  if (opening) renderWhatsNew();
+  whatsNewEl.hidden = !opening;
+  updatedBadge.setAttribute('aria-expanded', opening ? 'true' : 'false');
 });
 
 // --- Service worker: offline caching only. Updates are applied exclusively
@@ -1076,8 +1284,13 @@ document.addEventListener('touchmove', (e) => {
     e.preventDefault();
     // Rubber-band damping so it eases off the further you pull, like the
     // native iOS overscroll bounce, rather than tracking the finger 1:1.
+    // With Reduce Motion, skip the rubber-band animation and only track readiness.
     const pull = Math.min(delta * 0.55, PTR_MAX);
     ptrReady = pull >= PTR_THRESHOLD;
+    if (prefersReducedMotion()) {
+      ptrIndicator.style.opacity = ptrReady ? '1' : '0.35';
+      return;
+    }
     appContent.classList.add('ptr-dragging');
     ptrIndicator.classList.add('ptr-dragging');
     appContent.style.transform = `translateY(${pull}px)`;
@@ -1105,10 +1318,12 @@ document.addEventListener('touchend', () => {
 
 async function triggerPullRefresh() {
   ptrRefreshing = true;
-  ptrIndicator.classList.add('ptr-spinning');
-  appContent.style.transform = 'translateY(56px)';
-  ptrIndicator.style.transform = 'translateY(24px)';
   ptrIndicator.style.opacity = '1';
+  if (!prefersReducedMotion()) {
+    ptrIndicator.classList.add('ptr-spinning');
+    appContent.style.transform = 'translateY(56px)';
+    ptrIndicator.style.transform = 'translateY(24px)';
+  }
 
   try {
     if ('serviceWorker' in navigator) {

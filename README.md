@@ -15,6 +15,8 @@ A simple gas fill-up log PWA. Install it to your home screen on iOS, Android, or
 - **Fill from photo** — under the ⚙ Advanced panel: pick a photo (e.g. one taken at the pump) and it reads the date/time and GPS location straight out of the photo's EXIF metadata
 - **Tap any log entry** to edit or delete it; a live "Advanced" panel exposes every stored field (entry ID, latitude, longitude, location source) for full transparency and manual correction
 - **CSV export** of your full log, including coordinates
+- **Month-grouped log** — older months collapse; each month shows fill-up count, spend, miles, and avg $/gal
+- **MPG trend** — small sparkline + overall average under the log
 - **Pull down to refresh** to check for and install app updates (standard iOS/Android gesture — this app doesn't auto-update in the background)
 
 ## Data & privacy
@@ -63,12 +65,21 @@ Note: service workers (and therefore offline support + install prompts) require 
 
 ## Releasing
 
-GitHub Pages only deploys on a pushed version tag (`v*`), not on every commit to `main` — see `.github/workflows/deploy.yml`. To ship a change:
+GitHub Pages only deploys on a pushed version tag (`v*`), not on every commit to `main` — see `.github/workflows/deploy.yml`.
+
+Prefer [Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, `docs:`, `chore:`, …) so [git-cliff](https://git-cliff.org) can group the changelog. Config lives in `cliff.toml`.
 
 ```
+# 1. Bump APP_VERSION + RELEASE_NOTES (bullet list) in app.js, and package.json version
+# 2. Refresh CHANGELOG.md from tags/commits
+npm run changelog
+
+# 3. Tag + publish (Pages deploys from the tag)
 git tag -a vX.Y.Z -m "vX.Y.Z - short description"
 git push origin vX.Y.Z
-gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file - <<'EOF'
+- bullet from RELEASE_NOTES
+EOF
 ```
 
-Also bump `APP_VERSION` in `app.js` — it drives the footer version display and the "✓ Updated" badge shown after a pull-to-refresh picks up a new release.
+`APP_VERSION` drives the footer and the "✓ Updated" badge after pull-to-refresh. `RELEASE_NOTES` is the short bullet list shown when that badge is tapped — keep it human-readable, not a dump of every commit.
