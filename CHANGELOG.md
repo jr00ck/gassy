@@ -4,6 +4,11 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
+## [1.12.0] - 2026-10-08
+
+### Features
+
+- Log UX polish, portrait via manifest, add-entry reveal
 ## [1.11.1] - 2026-10-08
 
 ### Features
