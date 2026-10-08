@@ -4,11 +4,16 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
-## [1.14.0] - 2026-10-08
+## [unreleased]
 
 ### Features
 
 - All-time log stats and Trends page with MPG, price, miles charts
+
+### Bug Fixes
+
+- Tighten price chart average label spacing
+- Stop auto-locate on blur and dedupe Locating UX
 ## [1.13.0] - 2026-10-08
 
 ### Features
