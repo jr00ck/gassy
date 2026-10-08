@@ -43,17 +43,19 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.11.0', () => {
+test('boots without errors and shows v1.11.1', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.11.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.11.1');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
+  assert.equal(d.documentElement.dataset.orientationLock, 'portrait');
+  assert.equal(d.getElementById('allow-landscape').checked, false);
 });
 
 test('Updated badge renders release notes as a bullet list', () => {
   const { d } = boot((dom) => {
-    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.10.0');
+    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.11.0');
   });
   const badge = d.getElementById('updated-badge');
   const panel = d.getElementById('whats-new');
@@ -61,13 +63,33 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.11\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.11\.1/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
-  assert.ok(items.length >= 3);
+  assert.ok(items.length >= 2);
   assert.ok(items.every((t) => t.trim().length > 0));
   badge.click();
   assert.equal(panel.hidden, true);
   assert.equal(badge.getAttribute('aria-expanded'), 'false');
+});
+
+test('portrait lock defaults on; Settings can allow landscape', () => {
+  assert.match(html, /user-scalable=no/);
+  assert.match(html, /maximum-scale=1/);
+  assert.match(css, /data-orientation-lock="portrait"/);
+
+  const { d, w } = boot();
+  assert.equal(d.documentElement.dataset.orientationLock, 'portrait');
+  const checkbox = d.getElementById('allow-landscape');
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.equal(w.localStorage.getItem('gassy.allowLandscape'), '1');
+  assert.equal(d.documentElement.dataset.orientationLock, 'any');
+
+  const again = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.allowLandscape', '1');
+  });
+  assert.equal(again.d.getElementById('allow-landscape').checked, true);
+  assert.equal(again.d.documentElement.dataset.orientationLock, 'any');
 });
 
 test('footer CSS no longer stacks opacity on already-dim text', () => {

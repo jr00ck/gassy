@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Gassy</title>
 
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,6 +20,10 @@
 <body>
 
 <div id="ptr-indicator" class="ptr-indicator"><div class="ptr-spinner"></div></div>
+
+<div id="rotate-gate" class="rotate-gate" hidden role="status" aria-live="polite">
+  <p>Turn your phone upright to keep using Gassy</p>
+</div>
 
 <div id="app-content">
 
@@ -131,6 +135,17 @@
       </div>
       <div id="mpg-trend-chart" class="mpg-trend-chart" role="img"></div>
     </section>
+  </section>
+
+  <section class="settings-section" aria-labelledby="settings-heading">
+    <h2 id="settings-heading">Settings</h2>
+    <label class="settings-row" for="allow-landscape">
+      <span class="settings-label">
+        <span class="settings-title">Allow landscape</span>
+        <span class="settings-hint">Off by default — Gassy stays portrait-locked</span>
+      </span>
+      <input type="checkbox" id="allow-landscape">
+    </label>
   </section>
 
   <footer class="app-footer">

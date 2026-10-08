@@ -46,6 +46,8 @@ html, body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  /* App-like: no double-tap zoom delay; pinch still blocked via viewport meta. */
+  touch-action: manipulation;
 }
 
 body {
@@ -55,6 +57,95 @@ body {
   padding-right: env(safe-area-inset-right);
   min-height: 100vh;
   overscroll-behavior-y: contain;
+}
+
+.rotate-gate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  text-align: center;
+}
+
+.rotate-gate p {
+  margin: 0;
+  max-width: 16rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* When portrait-locked, landscape (phone-sized) shows a rotate prompt instead
+   of a sideways UI — covers browsers where Screen Orientation lock is ignored. */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  html[data-orientation-lock="portrait"] .rotate-gate {
+    display: flex !important;
+  }
+
+  html[data-orientation-lock="portrait"] #app-content,
+  html[data-orientation-lock="portrait"] .ptr-indicator {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+.settings-section {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-border);
+}
+
+.settings-section h2 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.settings-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.settings-hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.settings-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
 }
 
 .topbar {
