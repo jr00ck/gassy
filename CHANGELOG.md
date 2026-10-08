@@ -4,6 +4,11 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
+## [1.11.1] - 2026-10-08
+
+### Features
+
+- Portrait lock by default and disable pinch-zoom
 ## [1.11.0] - 2026-10-08
 
 ### Features
