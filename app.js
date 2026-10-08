@@ -12,6 +12,7 @@ const locationStatus = document.getElementById('location-status');
 const locateBtn = document.getElementById('locate-btn');
 const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
+const logMeta = document.getElementById('log-meta');
 const exportBtn = document.getElementById('export-btn');
 const mpgTrendEl = document.getElementById('mpg-trend');
 const mpgTrendAvgEl = document.getElementById('mpg-trend-avg');
@@ -52,11 +53,11 @@ let currentPredictions = null;
 // either of those fields has real input.
 let currentTotalGuess = null;
 
-// How many newest calendar months stay expanded in the log by default.
-// (~2–4 fill-ups/month → keeping only the latest month open is too strict.)
-const OPEN_RECENT_MONTHS = 3;
-// User toggles for month groups during this session (monthKey → open?).
+// Session toggles for month groups (monthKey → open?). Default: all collapsed
+// for an at-a-glance summary view. Adding a fill-up forces that month open.
 const monthOpenOverrides = new Map();
+// After a successful add, animate this entry into the opened month.
+let revealEntryId = null;
 
 function prefersReducedMotion() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -64,6 +65,24 @@ function prefersReducedMotion() {
 
 function smoothScrollBehavior() {
   return prefersReducedMotion() ? 'auto' : 'smooth';
+}
+
+function setCollapsibleOpen(panel, open) {
+  if (!panel) return;
+  if (open) {
+    panel.hidden = false;
+    if (prefersReducedMotion()) {
+      panel.classList.add('is-open');
+      return;
+    }
+    // Double-rAF so the 0fr → 1fr transition runs after display flips on.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => panel.classList.add('is-open'));
+    });
+  } else {
+    panel.classList.remove('is-open');
+    panel.hidden = true;
+  }
 }
 
 // Shows loading feedback directly in the location field itself (not just the
@@ -110,8 +129,10 @@ function syncAdvancedFields() {
 }
 
 advancedToggle.addEventListener('click', () => {
-  advancedPanel.hidden = !advancedPanel.hidden;
-  if (!advancedPanel.hidden) syncAdvancedFields();
+  const opening = advancedPanel.hidden || !advancedPanel.classList.contains('is-open');
+  setCollapsibleOpen(advancedPanel, opening);
+  advancedToggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
+  if (opening) syncAdvancedFields();
 });
 
 sourceField.addEventListener('change', () => {
@@ -776,12 +797,11 @@ function summarizeMonth(monthEntries) {
   };
 }
 
-function isMonthOpen(key, index) {
-  if (monthOpenOverrides.has(key)) return monthOpenOverrides.get(key);
-  return index < OPEN_RECENT_MONTHS;
+function isMonthOpen(key) {
+  return monthOpenOverrides.get(key) === true;
 }
 
-function createEntryElement(entry) {
+function createEntryElement(entry, { arrive = false } = {}) {
   const prev = findPreviousEntry(entry.datetime, entry.id);
   const gallons = entry.pricePerGallon > 0 ? entry.totalCost / entry.pricePerGallon : 0;
   const mpg = calcMpg(entry.mileage, gallons, prev && prev.mileage);
@@ -806,6 +826,7 @@ function createEntryElement(entry) {
     ${entry.location ? `<div class="entry-location">📍 ${escapeHtml(entry.location)}</div>` : ''}
     <span class="entry-chevron" aria-hidden="true">›</span>
   `;
+  if (arrive) li.classList.add('entry-arrive');
   return li;
 }
 
@@ -879,9 +900,18 @@ function render() {
   exportBtn.disabled = entries.length === 0;
   updateStorageUsageBadge();
 
+  if (entries.length) {
+    logMeta.hidden = false;
+    logMeta.textContent = `${entries.length} fill-up${entries.length === 1 ? '' : 's'}`;
+  } else {
+    logMeta.hidden = true;
+    logMeta.textContent = '';
+  }
+
+  const arrivingId = revealEntryId;
   const groups = groupEntriesByMonth(entries);
-  groups.forEach((group, index) => {
-    const open = isMonthOpen(group.key, index);
+  groups.forEach((group) => {
+    const open = isMonthOpen(group.key);
     const summary = summarizeMonth(group.entries);
     const summaryBits = [
       `${summary.count} fill-up${summary.count === 1 ? '' : 's'}`,
@@ -893,11 +923,16 @@ function render() {
     const monthLi = document.createElement('li');
     monthLi.className = 'month-group';
     monthLi.dataset.monthKey = group.key;
+    const revealingHere = Boolean(arrivingId && group.entries.some((entry) => entry.id === arrivingId));
 
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'month-toggle';
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute(
+      'aria-label',
+      `${monthLabelFromKey(group.key)}. ${summaryBits.join(', ')}. ${open ? 'Collapse' : 'Expand'} fill-ups.`
+    );
     toggle.innerHTML = `
       <span class="month-toggle-row">
         <span class="month-label">${escapeHtml(monthLabelFromKey(group.key))}</span>
@@ -906,24 +941,53 @@ function render() {
       <span class="month-summary">${escapeHtml(summaryBits.join(' · '))}</span>
     `;
 
+    const panel = document.createElement('div');
+    panel.className = 'month-panel';
+    const inner = document.createElement('div');
+    inner.className = 'collapse-inner';
     const monthEntries = document.createElement('ul');
     monthEntries.className = 'month-entries';
-    monthEntries.hidden = !open;
-    group.entries.forEach((entry) => monthEntries.appendChild(createEntryElement(entry)));
+    group.entries.forEach((entry) => {
+      monthEntries.appendChild(createEntryElement(entry, { arrive: entry.id === arrivingId }));
+    });
+    inner.appendChild(monthEntries);
+    panel.appendChild(inner);
 
     toggle.addEventListener('click', () => {
-      const nextOpen = monthEntries.hidden;
-      monthEntries.hidden = !nextOpen;
+      const nextOpen = !monthLi.classList.contains('is-open');
+      monthLi.classList.toggle('is-open', nextOpen);
       toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
       monthOpenOverrides.set(group.key, nextOpen);
     });
 
     monthLi.appendChild(toggle);
-    monthLi.appendChild(monthEntries);
+    monthLi.appendChild(panel);
     entriesList.appendChild(monthLi);
+
+    if (open) {
+      // Animate the month open when revealing a just-added fill-up.
+      if (revealingHere && !prefersReducedMotion()) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => monthLi.classList.add('is-open'));
+        });
+      } else {
+        monthLi.classList.add('is-open');
+      }
+    }
   });
 
   renderMpgTrend(entries);
+
+  if (arrivingId) {
+    const arrived = entriesList.querySelector(`.entry[data-id="${arrivingId}"]`);
+    if (arrived) {
+      arrived.scrollIntoView({ behavior: smoothScrollBehavior(), block: 'nearest' });
+      const clearArrive = () => arrived.classList.remove('entry-arrive');
+      arrived.addEventListener('animationend', clearArrive, { once: true });
+      setTimeout(clearArrive, 700);
+    }
+    revealEntryId = null;
+  }
 }
 
 function updateMpgPreview() {
@@ -981,7 +1045,8 @@ function resetToNewEntry() {
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
   clearPhotoStatus();
-  advancedPanel.hidden = true;
+  setCollapsibleOpen(advancedPanel, false);
+  advancedToggle.setAttribute('aria-expanded', 'false');
   mpgPreview.hidden = true;
   applyPredictedPlaceholders();
 
@@ -1062,15 +1127,21 @@ form.addEventListener('submit', (e) => {
     source: lastLocationSource,
   };
 
+  let savedId = editingId;
   if (editingId) {
     const idx = entries.findIndex((entry) => entry.id === editingId);
     if (idx !== -1) entries[idx] = { ...entries[idx], ...data };
   } else {
-    entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...data });
+    savedId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    entries.push({ id: savedId, ...data });
+    // Keep the new fill-up visible: open its month and play the arrive animation.
+    revealEntryId = savedId;
+    monthOpenOverrides.set(monthKeyFromDatetime(data.datetime), true);
   }
   try {
     saveEntries(entries);
   } catch {
+    revealEntryId = null;
     missingDataNotice.hidden = false;
     missingDataNotice.textContent = 'Could not save this fill-up — device storage is full. Export a backup, then delete older entries.';
     return;
@@ -1210,49 +1281,16 @@ setDefaultDatetime();
 applyPredictedPlaceholders();
 render();
 
-// --- Orientation: portrait-locked by default; Settings can allow landscape ---
-
-const ALLOW_LANDSCAPE_KEY = 'gassy.allowLandscape';
-const allowLandscapeInput = document.getElementById('allow-landscape');
-const rotateGate = document.getElementById('rotate-gate');
-
-function isLandscapeAllowed() {
-  return localStorage.getItem(ALLOW_LANDSCAPE_KEY) === '1';
-}
-
-async function applyOrientationLock() {
-  const allowLandscape = isLandscapeAllowed();
-  document.documentElement.dataset.orientationLock = allowLandscape ? 'any' : 'portrait';
-  if (rotateGate) rotateGate.hidden = allowLandscape;
-
-  if (!screen.orientation) return;
-  try {
-    if (allowLandscape) {
-      if (typeof screen.orientation.unlock === 'function') screen.orientation.unlock();
-    } else if (typeof screen.orientation.lock === 'function') {
-      // May reject in a regular browser tab; CSS rotate-gate covers that case.
-      await screen.orientation.lock('portrait');
-    }
-  } catch {
-    // Unsupported or requires fullscreen/standalone — ignore.
-  }
-}
-
-allowLandscapeInput.checked = isLandscapeAllowed();
-allowLandscapeInput.addEventListener('change', () => {
-  localStorage.setItem(ALLOW_LANDSCAPE_KEY, allowLandscapeInput.checked ? '1' : '0');
-  applyOrientationLock();
-});
-applyOrientationLock();
-
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.11.1';
+const APP_VERSION = '1.12.0';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Portrait lock on by default — turn on Allow landscape in Settings if you want sideways',
-  'Pinch / tap-to-zoom turned back off so it feels more like an installed app',
+  'Fill-up history starts collapsed for at-a-glance month summaries; tap a month to expand',
+  'New fill-ups slide into an opened month with a short highlight so you can confirm what you just logged',
+  'Month headers read as real section headers when open; Export CSV moved to the bottom',
+  'Portrait lock uses the installed-app manifest again (home screen / Add to Home Screen on iOS)',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
@@ -1270,15 +1308,17 @@ localStorage.setItem(LAST_SEEN_KEY, APP_VERSION);
 function renderWhatsNew() {
   const items = RELEASE_NOTES.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
   whatsNewEl.innerHTML = `
-    <p class="whats-new-title">What's new in v${escapeHtml(APP_VERSION)}</p>
-    <ul class="whats-new-list">${items}</ul>
+    <div class="collapse-inner">
+      <p class="whats-new-title">What's new in v${escapeHtml(APP_VERSION)}</p>
+      <ul class="whats-new-list">${items}</ul>
+    </div>
   `;
 }
 
 updatedBadge.addEventListener('click', () => {
-  const opening = whatsNewEl.hidden;
+  const opening = updatedBadge.getAttribute('aria-expanded') !== 'true';
   if (opening) renderWhatsNew();
-  whatsNewEl.hidden = !opening;
+  setCollapsibleOpen(whatsNewEl, opening);
   updatedBadge.setAttribute('aria-expanded', opening ? 'true' : 'false');
 });
 

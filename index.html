@@ -21,10 +21,6 @@
 
 <div id="ptr-indicator" class="ptr-indicator"><div class="ptr-spinner"></div></div>
 
-<div id="rotate-gate" class="rotate-gate" hidden role="status" aria-live="polite">
-  <p>Turn your phone upright to keep using Gassy</p>
-</div>
-
 <div id="app-content">
 
 <header class="topbar">
@@ -33,7 +29,7 @@
     <button type="button" id="updated-badge" class="updated-badge" hidden
       aria-expanded="false" aria-controls="whats-new">✓ Updated</button>
   </div>
-  <div id="whats-new" class="whats-new" hidden></div>
+  <div id="whats-new" class="whats-new collapsible" hidden></div>
 </header>
 
 <main>
@@ -46,39 +42,42 @@
     <div class="field">
       <div class="field-label-row">
         <label for="datetime">Date &amp; time</label>
-        <button type="button" id="advanced-toggle" class="icon-btn" title="Advanced" aria-label="Advanced">⚙</button>
+        <button type="button" id="advanced-toggle" class="icon-btn" title="Advanced"
+          aria-label="Advanced" aria-expanded="false" aria-controls="advanced-panel">⚙</button>
       </div>
 
-      <div id="advanced-panel" class="advanced-panel" hidden>
-        <div class="field">
-          <label for="entry-id-field">Entry ID</label>
-          <input type="text" id="entry-id-field" readonly placeholder="(assigned on save)">
-        </div>
-
-        <div class="row">
+      <div id="advanced-panel" class="advanced-panel collapsible" hidden>
+        <div class="collapse-inner">
           <div class="field">
-            <label for="lat-field">Latitude</label>
-            <input type="text" id="lat-field" inputmode="decimal" placeholder="—">
+            <label for="entry-id-field">Entry ID</label>
+            <input type="text" id="entry-id-field" readonly placeholder="(assigned on save)">
           </div>
+
+          <div class="row">
+            <div class="field">
+              <label for="lat-field">Latitude</label>
+              <input type="text" id="lat-field" inputmode="decimal" placeholder="—">
+            </div>
+            <div class="field">
+              <label for="lon-field">Longitude</label>
+              <input type="text" id="lon-field" inputmode="decimal" placeholder="—">
+            </div>
+          </div>
+
           <div class="field">
-            <label for="lon-field">Longitude</label>
-            <input type="text" id="lon-field" inputmode="decimal" placeholder="—">
+            <label for="source-field">Location source</label>
+            <select id="source-field">
+              <option value="">Unknown</option>
+              <option value="photo">Photo</option>
+              <option value="gps">GPS</option>
+              <option value="manual">Typed manually</option>
+            </select>
           </div>
-        </div>
 
-        <div class="field">
-          <label for="source-field">Location source</label>
-          <select id="source-field">
-            <option value="">Unknown</option>
-            <option value="photo">Photo</option>
-            <option value="gps">GPS</option>
-            <option value="manual">Typed manually</option>
-          </select>
+          <button type="button" id="import-photo-btn" class="secondary-outline-btn">📷 Fill date &amp; location from photo</button>
+          <input type="file" id="photo-input" accept="image/*" hidden>
+          <p id="photo-status" class="hint" hidden></p>
         </div>
-
-        <button type="button" id="import-photo-btn" class="secondary-outline-btn">📷 Fill date &amp; location from photo</button>
-        <input type="file" id="photo-input" accept="image/*" hidden>
-        <p id="photo-status" class="hint" hidden></p>
       </div>
 
       <input type="datetime-local" id="datetime" name="datetime" required>
@@ -121,11 +120,8 @@
     <button type="button" id="delete-entry-btn" class="delete-link-btn" hidden>Delete this fill-up</button>
   </form>
 
-  <section class="log-section" aria-labelledby="log-heading">
-    <div class="log-header">
-      <h2 id="log-heading">Log</h2>
-      <button type="button" id="export-btn" class="link-btn">Export CSV</button>
-    </div>
+  <section class="log-section" aria-label="Fill-up history">
+    <p id="log-meta" class="log-meta" hidden></p>
     <ul id="entries-list" class="entries"></ul>
     <p id="empty-state" class="hint">No fill-ups logged yet.</p>
     <section id="mpg-trend" class="mpg-trend" hidden aria-labelledby="mpg-trend-heading">
@@ -137,16 +133,9 @@
     </section>
   </section>
 
-  <section class="settings-section" aria-labelledby="settings-heading">
-    <h2 id="settings-heading">Settings</h2>
-    <label class="settings-row" for="allow-landscape">
-      <span class="settings-label">
-        <span class="settings-title">Allow landscape</span>
-        <span class="settings-hint">Off by default — Gassy stays portrait-locked</span>
-      </span>
-      <input type="checkbox" id="allow-landscape">
-    </label>
-  </section>
+  <div class="app-footer-actions">
+    <button type="button" id="export-btn" class="link-btn">Export CSV</button>
+  </div>
 
   <footer class="app-footer">
     <span class="app-footer-version"><span id="app-version"></span> · <span id="storage-usage"></span></span>
