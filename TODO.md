@@ -1,30 +1,35 @@
-# Gassy backlog
+# Gassy — feature backlog
 
-Statuses: `done` · `in progress` · `todo`
+What's in the app already and what's still on the wishlist.
+Written for humans (including non-devs); a bit of product/dev wording is fine when it
+makes a feature clearer.
 
-## Now / this release
+---
 
-- [x] **done** — Reliability quick wins (network-first service worker, lookup timeouts + cancel safety, price float rounding, quota/corrupt storage handling, CSV formula-safe export, footer contrast, pinch-zoom)
-- [x] **done** — When editing an entry with no saved coordinates, don't let 📍 silently replace a typed place name with live GPS (confirm first; empty field still allowed)
-- [x] **done** — Add automated tests to the repo (`npm test` / jsdom coverage for form, storage, CSV, locate)
-- [x] **done** — Fix date/time field not moving down when the Advanced (⚙) panel expands
-- [x] **done** — Delete merged remote branches `claude/session-agzzje` and `claude/location-lookup-triggers-3yyjix`
-- [x] **done** — Opened release PR [#8](https://github.com/jr00ck/gassy/pull/8) (`fix/reliability-quick-wins` → `main`, app bumped to 1.10.0)
-- [x] **done** — Merged PR #8, tagged `v1.10.0`, published the GitHub release, deleted `fix/reliability-quick-wins`
+## In the app today
 
-## Product backlog
+- Reliability basics: offline-friendly updates, safer location lookup, formula-safe CSV export, clearer storage errors
+- Editing a fill-up without saved GPS won't silently overwrite a typed place name
+- Live MPG preview while you fill out the form
+- Predicted mileage / price / total as ghost placeholders (hints only)
+- Fill from photo (JPEG EXIF date + GPS)
+- Nearby gas-station lookup with tappable alternatives
+- CSV export of the full log
+- Pull down to refresh for app updates, with a ✓ Updated badge that shows what's new as a short bullet list
+- Changelog tooling: Conventional Commits + [git-cliff](https://git-cliff.org) (`npm run changelog` → `CHANGELOG.md`)
+- Long log by month — older months collapse by default (several recent months stay open); each month header shows fill-up count, total spend, total miles, and avg $/gal
+- MPG trend — compact sparkline of recent per-fill-up MPG plus overall average, under the log
+- Accessibility pass — clearer focus, larger tap targets, calmer pull-to-refresh when Reduce Motion is on
 
-- [ ] **todo** — CSV import (restore a previously exported log; separate from export)
-- [ ] **todo** — Photo fill: support HEIC / non-JPEG EXIF (or convert before reading), not only JPEG APP1
-- [ ] **todo** — Full vs partial fill-up flag *(not handled today — predictions and tank-capacity bounds treat every interval as a full tank, which skews guesses when people top off)*
-- [ ] **todo** — Portrait lock on by default; add a Settings checkbox to allow landscape / unlock orientation
-- [ ] **todo** — Long log: group entries by calendar month; months older than a threshold collapse by default (tappable to expand). Keep several recent months open — only the latest month open would be too strict at ~2–4 fill-ups/month. Each month header gets a compact summary (fill-up count, total spend, total miles, avg $/gal)
-- [ ] **todo** — Vehicle / tank profiles (multiple cars, or at least a named tank capacity instead of inferring from largest fill)
-- [ ] **todo** — MPG trend viz: a small sparkline (or equally compact chart) of per-fill-up MPG over the last N entries, plus an overall average — tucked under the log or in a secondary section so the first screen stays a form, not a dashboard
-- [ ] **todo** — Cost-per-mile and spend-over-time summary (secondary surface, not the hero)
-- [ ] **todo** — Optional fuel grade / octane field (for station comparison later)
-- [ ] **todo** — Fill-up reminder: optional local nudge when it's been X miles (from last odometer + typical interval) or Y days since the last logged fill-up — badge and/or notification, fully opt-in, no server
-- [ ] **todo** — Backup & restore beyond CSV (e.g. one-tap JSON file, or Web Share of the backup)
-- [ ] **todo** — Quick-pick stations: remember places you've logged before (and/or pinned favorites) and show them as tappable chips near Location so a usual station can be chosen without another GPS/Overpass lookup
-- [ ] **todo** — Accessibility pass (focus order, reduce-motion for pull-to-refresh, larger tap targets review)
-- [ ] **todo** — CI: run the automated test suite on PRs
+---
+
+## Wishlist
+
+- **CSV import** — restore a previously exported log (separate from export)
+- **Photo fill beyond JPEG** — HEIC / other formats (or convert before reading EXIF), not only JPEG APP1
+- **Full vs partial fill-up** — mark top-offs so predictions and tank-capacity bounds aren't skewed by treating every interval as a full tank
+- **Portrait lock** — on by default, with a Settings checkbox to allow landscape
+- **Vehicle / tank profiles** — multiple cars, or at least a named tank capacity instead of guessing from the largest fill
+- **Cost-per-mile & spend over time** — summary on a secondary surface, not the hero
+- **Backup & restore beyond CSV** — e.g. one-tap JSON file, or Web Share of the backup
+- **Quick-pick stations** — remember places you've logged (and/or pinned favorites) as tappable chips near Location

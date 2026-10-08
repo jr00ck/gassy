@@ -14,6 +14,31 @@
 
 [hidden] { display: none !important; }
 
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .ptr-indicator,
+  #app-content {
+    transition: none !important;
+  }
+
+  .ptr-indicator.ptr-spinning .ptr-spinner {
+    animation: none !important;
+  }
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -53,7 +78,8 @@ body {
   color: var(--accent);
   border: 1px solid rgba(255, 107, 53, 0.3);
   border-radius: 999px;
-  padding: 3px 10px;
+  min-height: 32px;
+  padding: 6px 12px;
   font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
@@ -67,7 +93,27 @@ body {
   padding: 12px 14px;
   font-size: 0.82rem;
   color: var(--text-dim);
-  line-height: 1.4;
+  line-height: 1.45;
+}
+
+.whats-new-title {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.whats-new-list {
+  margin: 0;
+  padding-left: 1.15em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.whats-new-list li {
+  padding-left: 2px;
 }
 
 .ptr-indicator {
@@ -196,8 +242,8 @@ input[readonly] {
   border: none;
   color: var(--text-dim);
   border-radius: 8px;
-  width: 26px;
-  height: 26px;
+  min-width: 44px;
+  min-height: 44px;
   font-size: 0.9rem;
   cursor: pointer;
   display: inline-flex;
@@ -243,7 +289,8 @@ input[readonly] {
   border: 1px solid var(--card-border);
   border-radius: 10px;
   font-size: 1.1rem;
-  width: 46px;
+  width: 48px;
+  min-height: 48px;
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -272,7 +319,8 @@ input[readonly] {
   border: 1px solid var(--card-border);
   color: var(--text-dim);
   border-radius: 999px;
-  padding: 6px 12px;
+  min-height: 36px;
+  padding: 8px 14px;
   font-size: 0.78rem;
   cursor: pointer;
 }
@@ -349,7 +397,8 @@ input[readonly] {
   color: var(--accent);
   font-size: 0.85rem;
   cursor: pointer;
-  padding: 4px;
+  min-height: 44px;
+  padding: 10px 8px;
 }
 
 .link-btn:disabled {
@@ -363,7 +412,77 @@ input[readonly] {
   padding: 0;
   display: flex;
   flex-direction: column;
+  gap: 14px;
+}
+
+.month-group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.month-toggle {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  min-height: 48px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.month-toggle:hover,
+.month-toggle:focus-visible {
+  border-color: rgba(255, 107, 53, 0.45);
+}
+
+.month-toggle-row {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 10px;
+}
+
+.month-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.month-chevron {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  transition: transform 0.15s ease;
+}
+
+.month-toggle[aria-expanded="false"] .month-chevron {
+  transform: rotate(-90deg);
+}
+
+.month-summary {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.month-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.month-entries[hidden] {
+  display: none !important;
 }
 
 .entry {
@@ -374,10 +493,55 @@ input[readonly] {
   padding-right: 34px;
   position: relative;
   cursor: pointer;
+  min-height: 44px;
 }
 
 .entry:active {
   opacity: 0.8;
+}
+
+.mpg-trend {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-border);
+}
+
+.mpg-trend-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.mpg-trend-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.mpg-trend-avg {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.mpg-trend-chart {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 12px 14px 10px;
+}
+
+.mpg-trend-chart svg {
+  display: block;
+  width: 100%;
+  height: 44px;
+}
+
+.mpg-trend-meta {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-dim);
 }
 
 .entry-chevron {

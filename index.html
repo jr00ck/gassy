@@ -26,7 +26,8 @@
 <header class="topbar">
   <div class="topbar-row">
     <h1>⛽ Gassy</h1>
-    <button type="button" id="updated-badge" class="updated-badge" hidden>✓ Updated</button>
+    <button type="button" id="updated-badge" class="updated-badge" hidden
+      aria-expanded="false" aria-controls="whats-new">✓ Updated</button>
   </div>
   <div id="whats-new" class="whats-new" hidden></div>
 </header>
@@ -116,13 +117,20 @@
     <button type="button" id="delete-entry-btn" class="delete-link-btn" hidden>Delete this fill-up</button>
   </form>
 
-  <section class="log-section">
+  <section class="log-section" aria-labelledby="log-heading">
     <div class="log-header">
-      <h2>Log</h2>
+      <h2 id="log-heading">Log</h2>
       <button type="button" id="export-btn" class="link-btn">Export CSV</button>
     </div>
     <ul id="entries-list" class="entries"></ul>
     <p id="empty-state" class="hint">No fill-ups logged yet.</p>
+    <section id="mpg-trend" class="mpg-trend" hidden aria-labelledby="mpg-trend-heading">
+      <div class="mpg-trend-head">
+        <h3 id="mpg-trend-heading">MPG trend</h3>
+        <p id="mpg-trend-avg" class="mpg-trend-avg"></p>
+      </div>
+      <div id="mpg-trend-chart" class="mpg-trend-chart" role="img"></div>
+    </section>
   </section>
 
   <footer class="app-footer">
