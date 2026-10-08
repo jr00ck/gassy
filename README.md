@@ -15,9 +15,9 @@ A simple gas fill-up log PWA. Install it to your home screen on iOS, Android, or
 - **Fill from photo** — under the ⚙ Advanced panel: pick a photo (e.g. one taken at the pump) and it reads the date/time and GPS location straight out of the photo's EXIF metadata
 - **Tap any log entry** to edit or delete it; a live "Advanced" panel exposes every stored field (entry ID, latitude, longitude, location source) for full transparency and manual correction
 - **CSV export** of your full log, including coordinates
-- **Month-grouped log** — older months collapse; each month shows fill-up count, spend, miles, and avg $/gal
+- **Month-grouped log** — months start collapsed with spend / miles / $/gal summaries; tap to expand
 - **MPG trend** — small sparkline + overall average under the log
-- **Portrait lock** by default (Settings → Allow landscape to unlock)
+- **Portrait lock** when installed to the home screen (web manifest `orientation: portrait`)
 - **Pull down to refresh** to check for and install app updates (standard iOS/Android gesture — this app doesn't auto-update in the background)
 
 ## Data & privacy

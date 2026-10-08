@@ -43,19 +43,20 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.11.1', () => {
+test('boots without errors and shows v1.12.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.11.1');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.12.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
-  assert.equal(d.documentElement.dataset.orientationLock, 'portrait');
-  assert.equal(d.getElementById('allow-landscape').checked, false);
+  assert.equal(d.getElementById('allow-landscape'), null);
+  assert.equal(d.getElementById('rotate-gate'), null);
+  assert.ok(d.querySelector('.app-footer-actions #export-btn'));
 });
 
 test('Updated badge renders release notes as a bullet list', () => {
   const { d } = boot((dom) => {
-    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.11.0');
+    dom.window.localStorage.setItem('gassy.lastSeenVersion', '1.11.1');
   });
   const badge = d.getElementById('updated-badge');
   const panel = d.getElementById('whats-new');
@@ -63,7 +64,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.11\.1/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.12\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 2);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -72,24 +73,11 @@ test('Updated badge renders release notes as a bullet list', () => {
   assert.equal(badge.getAttribute('aria-expanded'), 'false');
 });
 
-test('portrait lock defaults on; Settings can allow landscape', () => {
+test('manifest locks portrait; pinch zoom stays off', () => {
   assert.match(html, /user-scalable=no/);
   assert.match(html, /maximum-scale=1/);
-  assert.match(css, /data-orientation-lock="portrait"/);
-
-  const { d, w } = boot();
-  assert.equal(d.documentElement.dataset.orientationLock, 'portrait');
-  const checkbox = d.getElementById('allow-landscape');
-  checkbox.checked = true;
-  checkbox.dispatchEvent(new w.Event('change', { bubbles: true }));
-  assert.equal(w.localStorage.getItem('gassy.allowLandscape'), '1');
-  assert.equal(d.documentElement.dataset.orientationLock, 'any');
-
-  const again = boot((dom) => {
-    dom.window.localStorage.setItem('gassy.allowLandscape', '1');
-  });
-  assert.equal(again.d.getElementById('allow-landscape').checked, true);
-  assert.equal(again.d.documentElement.dataset.orientationLock, 'any');
+  const manifest = fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8');
+  assert.match(manifest, /"orientation"\s*:\s*"portrait"/);
 });
 
 test('footer CSS no longer stacks opacity on already-dim text', () => {
@@ -301,36 +289,46 @@ test('editing without saved GPS asks before replacing a typed location', async (
   await new Promise((r) => setTimeout(r, 20));
 });
 
-test('long log collapses older months and keeps recent ones open', () => {
-  const { d, w } = boot();
-  const fills = [
-    { datetime: '2026-05-10T12:00', mileage: '10000', priceDigits: '349', totalDigits: '4000' },
-    { datetime: '2026-06-10T12:00', mileage: '10300', priceDigits: '349', totalDigits: '4000' },
-    { datetime: '2026-07-10T12:00', mileage: '10600', priceDigits: '349', totalDigits: '4000' },
-    { datetime: '2026-08-10T12:00', mileage: '10900', priceDigits: '349', totalDigits: '4000' },
-    { datetime: '2026-09-10T12:00', mileage: '11200', priceDigits: '349', totalDigits: '4000' },
-    { datetime: '2026-10-10T12:00', mileage: '11500', priceDigits: '349', totalDigits: '4000' },
+test('long log starts fully collapsed; adding a fill-up reveals that month', async () => {
+  const seed = [
+    { id: 'a1', datetime: '2026-05-10T12:00', mileage: 10000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'a2', datetime: '2026-06-10T12:00', mileage: 10300, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'a3', datetime: '2026-07-10T12:00', mileage: 10600, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'a4', datetime: '2026-08-10T12:00', mileage: 10900, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'a5', datetime: '2026-09-10T12:00', mileage: 11200, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'a6', datetime: '2026-10-10T12:00', mileage: 11500, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
   ];
-  for (const fillData of fills) {
-    fill(w, d, fillData);
-    d.getElementById('submit-btn').click();
-  }
+  const { d, w } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
+  });
 
   const groups = [...d.querySelectorAll('.month-group')];
   assert.equal(groups.length, 6);
-  const expanded = groups.filter((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'true');
-  const collapsed = groups.filter((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'false');
-  assert.equal(expanded.length, 3);
-  assert.equal(collapsed.length, 3);
+  assert.equal(d.getElementById('log-meta').textContent, '6 fill-ups');
+  assert.ok(groups.every((g) => !g.classList.contains('is-open')));
+  assert.ok(groups.every((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'false'));
   assert.match(groups[0].querySelector('.month-summary').textContent, /fill-up/);
   assert.match(groups[0].querySelector('.month-summary').textContent, /\$/);
 
-  const toggle = collapsed[0].querySelector('.month-toggle');
-  const nested = collapsed[0].querySelector('.month-entries');
-  assert.equal(nested.hidden, true);
+  const toggle = groups[0].querySelector('.month-toggle');
   toggle.click();
-  assert.equal(nested.hidden, false);
+  assert.equal(groups[0].classList.contains('is-open'), true);
   assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+
+  fill(w, d, {
+    datetime: '2026-10-11T12:00',
+    mileage: '11800',
+    priceDigits: '359',
+    totalDigits: '4500',
+  });
+  d.getElementById('submit-btn').click();
+  // Month open is applied on a double-rAF so the expand transition can run.
+  await new Promise((resolve) => {
+    w.requestAnimationFrame(() => w.requestAnimationFrame(resolve));
+  });
+  const october = d.querySelector('.month-group[data-month-key="2026-10"]');
+  assert.ok(october.classList.contains('is-open'));
+  assert.ok(d.querySelector('.entry.entry-arrive'));
 });
 
 test('accessibility helpers: entry keyboard open and reduced-motion CSS', () => {
