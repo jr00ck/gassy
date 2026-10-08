@@ -9,7 +9,8 @@ Statuses: `done` · `in progress` · `todo`
 - [x] **done** — Add automated tests to the repo (`npm test` / jsdom coverage for form, storage, CSV, locate)
 - [x] **done** — Fix date/time field not moving down when the Advanced (⚙) panel expands
 - [x] **done** — Delete merged remote branches `claude/session-agzzje` and `claude/location-lookup-triggers-3yyjix`
-- [ ] **in progress** — Ship this work via branch commit + PR to `main`, bump app version to 1.10.0, tag a release after merge
+- [x] **done** — Opened release PR [#8](https://github.com/jr00ck/gassy/pull/8) (`fix/reliability-quick-wins` → `main`, app bumped to 1.10.0)
+- [ ] **todo** — After PR #8 merges: tag `v1.10.0` and create the GitHub release so Pages deploys
 
 ## Product backlog
 
