@@ -46,10 +46,18 @@ Click the install icon in the address bar, or use the browser menu → **Install
 Serve the folder with any static file server, e.g.:
 
 ```
-python3 -m http.server 8099
+npm run serve
+# or: python3 -m http.server 8099
 ```
 
 Then open `http://localhost:8099`.
+
+Automated checks (jsdom, no browser required):
+
+```
+npm install
+npm test
+```
 
 Note: service workers (and therefore offline support + install prompts) require HTTPS or `localhost` — a plain `http://` LAN address won't register one, though the rest of the app works fine for testing over the local network.
 

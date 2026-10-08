@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gassy</title>
 
 <link rel="manifest" href="manifest.webmanifest">
@@ -43,39 +43,40 @@
         <label for="datetime">Date &amp; time</label>
         <button type="button" id="advanced-toggle" class="icon-btn" title="Advanced" aria-label="Advanced">⚙</button>
       </div>
+
+      <div id="advanced-panel" class="advanced-panel" hidden>
+        <div class="field">
+          <label for="entry-id-field">Entry ID</label>
+          <input type="text" id="entry-id-field" readonly placeholder="(assigned on save)">
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="lat-field">Latitude</label>
+            <input type="text" id="lat-field" inputmode="decimal" placeholder="—">
+          </div>
+          <div class="field">
+            <label for="lon-field">Longitude</label>
+            <input type="text" id="lon-field" inputmode="decimal" placeholder="—">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="source-field">Location source</label>
+          <select id="source-field">
+            <option value="">Unknown</option>
+            <option value="photo">Photo</option>
+            <option value="gps">GPS</option>
+            <option value="manual">Typed manually</option>
+          </select>
+        </div>
+
+        <button type="button" id="import-photo-btn" class="secondary-outline-btn">📷 Fill date &amp; location from photo</button>
+        <input type="file" id="photo-input" accept="image/*" hidden>
+        <p id="photo-status" class="hint" hidden></p>
+      </div>
+
       <input type="datetime-local" id="datetime" name="datetime" required>
-    </div>
-
-    <div id="advanced-panel" class="advanced-panel" hidden>
-      <div class="field">
-        <label for="entry-id-field">Entry ID</label>
-        <input type="text" id="entry-id-field" readonly placeholder="(assigned on save)">
-      </div>
-
-      <div class="row">
-        <div class="field">
-          <label for="lat-field">Latitude</label>
-          <input type="text" id="lat-field" inputmode="decimal" placeholder="—">
-        </div>
-        <div class="field">
-          <label for="lon-field">Longitude</label>
-          <input type="text" id="lon-field" inputmode="decimal" placeholder="—">
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="source-field">Location source</label>
-        <select id="source-field">
-          <option value="">Unknown</option>
-          <option value="photo">Photo</option>
-          <option value="gps">GPS</option>
-          <option value="manual">Typed manually</option>
-        </select>
-      </div>
-
-      <button type="button" id="import-photo-btn" class="secondary-outline-btn">📷 Fill date &amp; location from photo</button>
-      <input type="file" id="photo-input" accept="image/*" hidden>
-      <p id="photo-status" class="hint" hidden></p>
     </div>
 
     <div class="field">

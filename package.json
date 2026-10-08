@@ -1,0 +1,13 @@
+{
+  "name": "gassy",
+  "private": true,
+  "version": "1.10.0",
+  "description": "Gas fill-up log PWA",
+  "scripts": {
+    "test": "node --test test/app.test.mjs",
+    "serve": "python3 -m http.server 8099"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}
