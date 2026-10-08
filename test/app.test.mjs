@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.14.0', () => {
+test('boots without errors and shows v1.14.1', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.14.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.14.1');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,9 +69,9 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.1/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
-  assert.ok(items.length >= 2);
+  assert.ok(items.length >= 1);
   assert.ok(items.every((t) => t.trim().length > 0));
   badge.click();
   assert.equal(panel.hidden, true);
@@ -279,16 +279,41 @@ test('cancelling edit during a lookup ignores the late result', async () => {
 
   d.querySelector('.entry').click();
   d.getElementById('locate-btn').click();
-  assert.equal(d.getElementById('location').value, 'Locating…');
+  assert.equal(d.getElementById('location').value, 'Saved Station');
+  assert.match(d.getElementById('location-status').textContent, /Locating/);
+  assert.equal(d.getElementById('locate-btn').classList.contains('is-locating'), true);
+  assert.equal(d.getElementById('locate-btn').getAttribute('aria-busy'), 'true');
   assert.equal(d.getElementById('submit-btn').disabled, true);
   d.getElementById('cancel-edit-btn').click();
   assert.equal(d.getElementById('submit-btn').textContent, 'Add fill-up');
   assert.equal(d.getElementById('location').value, '');
+  assert.equal(d.getElementById('locate-btn').classList.contains('is-locating'), false);
   release();
   await pending;
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(d.getElementById('location').value, '');
   assert.equal(d.getElementById('submit-btn').disabled, false);
+});
+
+test('field blur does not auto-run location lookup', async () => {
+  const { d, w } = boot();
+  let gpsCalled = 0;
+  w.navigator.geolocation = {
+    getCurrentPosition() { gpsCalled += 1; },
+  };
+  d.getElementById('mileage').value = '10000';
+  d.getElementById('mileage').dispatchEvent(new w.Event('blur', { bubbles: true }));
+  d.getElementById('pricePerGallon').value = '3.49';
+  d.getElementById('pricePerGallon').dispatchEvent(new w.Event('blur', { bubbles: true }));
+  d.getElementById('totalCost').value = '40.00';
+  d.getElementById('totalCost').dispatchEvent(new w.Event('blur', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(gpsCalled, 0);
+  assert.equal(d.getElementById('location-status').textContent, '');
+
+  d.getElementById('locate-btn').click();
+  assert.equal(gpsCalled, 1);
+  assert.match(d.getElementById('location-status').textContent, /Locating/);
 });
 
 test('failed lookup recovers instead of staying stuck', async () => {

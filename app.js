@@ -121,15 +121,17 @@ function setCollapsibleOpen(panel, open) {
   setTimeout(finish, 280);
 }
 
-// Shows loading feedback directly in the location field itself (not just the
-// status line below it), so a lookup started while the field already has a
-// value is just as visible as the "Locating…" state on a fresh, empty field.
+// Loading state lives on the 📍 button + status line only — leave the field
+// alone so we don't duplicate "Locating…" in two places or wipe typed text.
 function beginLocating() {
   if (!isLocating) preLocateValue = locationInput.value;
   isLocating = true;
-  locationInput.value = 'Locating…';
   locationInput.readOnly = true;
   locateBtn.disabled = true;
+  locateBtn.classList.add('is-locating');
+  locateBtn.setAttribute('aria-busy', 'true');
+  locateBtn.setAttribute('aria-label', 'Locating…');
+  locateBtn.title = 'Locating…';
   submitBtn.disabled = true;
   locationStatus.textContent = 'Locating…';
 }
@@ -138,11 +140,15 @@ function endLocating() {
   isLocating = false;
   locationInput.readOnly = false;
   locateBtn.disabled = false;
+  locateBtn.classList.remove('is-locating');
+  locateBtn.removeAttribute('aria-busy');
+  locateBtn.setAttribute('aria-label', 'Refresh current location');
+  locateBtn.title = 'Refresh current location';
   submitBtn.disabled = false;
 }
 
 // Nothing new was found (e.g. permission denied) — put back whatever was
-// there before the lookup started instead of leaving "Locating…" stuck.
+// there before the lookup started.
 function cancelLocating() {
   locationInput.value = preLocateValue;
   endLocating();
@@ -1359,21 +1365,9 @@ attachCurrencyInput(totalCostInput, 2);
   el.addEventListener('input', updateMpgPreview);
 });
 
-// Don't fetch location on load — only once the user shows real intent by
-// filling in a field. Skipped while editing an existing entry so touching up
-// an old fill-up never overwrites its saved location with where you are now.
-// Also skipped once the location field already has a value, so tabbing
-// through the rest of the form after the first lookup fills it in doesn't
-// keep re-triggering (and re-showing "Locating…") on every later field.
-[mileageInput, priceInput, totalCostInput, datetimeInput].forEach((el) => {
-  let valueOnFocus = el.value;
-  el.addEventListener('focus', () => {
-    valueOnFocus = el.value;
-  });
-  el.addEventListener('blur', () => {
-    if (!editingId && el.value !== valueOnFocus && !locationInput.value.trim()) locate();
-  });
-});
+// Location lookup is explicit only: tap 📍 (or fill from a photo under
+// Advanced). Auto-running on every field blur re-fired after failed or
+// empty-result lookups and felt spammy while filling out an entry.
 
 importPhotoBtn.addEventListener('click', () => photoInput.click());
 
@@ -1643,13 +1637,12 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.14.1';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'All-time stats at the top of the log — same spend, miles, and avg price as each month',
-  'Trends page with MPG, gas price, and miles charts — high, low, average, and direction',
-  'Simple Log / Trends tabs at the bottom',
+  'Location lookup only runs when you tap 📍 — no more re-checks on every field blur',
+  'Cleaner Locating state: status under the field + pulsing pin, not duplicated in the input',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 

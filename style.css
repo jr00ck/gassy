@@ -366,6 +366,19 @@ input[readonly] {
   cursor: default;
 }
 
+/* Busy state: keep the pin readable (don't grey it out like a dead control)
+   and pulse so loading feedback isn't duplicated into the text field. */
+#locate-btn.is-locating {
+  opacity: 1;
+  border-color: rgba(255, 107, 53, 0.55);
+  color: var(--accent);
+  animation: locate-pulse 1s ease-in-out infinite;
+}
+
+@keyframes locate-pulse {
+  50% { opacity: 0.45; }
+}
+
 .hint {
   font-size: 0.78rem;
   color: var(--text-dim);
