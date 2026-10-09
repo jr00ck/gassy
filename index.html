@@ -123,8 +123,11 @@
 
     <section class="log-section" aria-label="Fill-up history">
       <div id="log-meta" class="log-meta" hidden>
-        <p class="log-meta-label">All time</p>
-        <p id="log-meta-summary" class="log-meta-summary"></p>
+        <div class="summary-head">
+          <p class="log-meta-label">All time</p>
+          <p id="log-meta-count" class="summary-count"></p>
+        </div>
+        <div id="log-meta-summary" class="summary-stats" role="list" aria-label="All-time totals"></div>
       </div>
       <ul id="entries-list" class="entries"></ul>
       <p id="empty-state" class="hint">No fill-ups logged yet.</p>
@@ -139,7 +142,7 @@
   </section>
 
   <section id="page-trends" class="page" hidden aria-label="Trends">
-    <p id="trends-empty" class="hint trends-empty">Add fill-ups in more than one month to see monthly trends.</p>
+    <p id="trends-empty" class="hint trends-empty">Add a couple of fill-ups to see trends.</p>
     <div id="trends-content" class="trends-content" hidden>
       <!-- Order matches log summary: fill-ups · spend · miles · mpg · $/gal -->
       <article id="chart-fills" class="trend-chart" hidden aria-labelledby="chart-fills-heading">
@@ -196,6 +199,6 @@
 
 </div>
 
-<script src="app.js?v=1.15.0"></script>
+<script src="app.js?v=1.16.0"></script>
 </body>
 </html>

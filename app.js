@@ -13,6 +13,7 @@ const locateBtn = document.getElementById('locate-btn');
 const entriesList = document.getElementById('entries-list');
 const emptyState = document.getElementById('empty-state');
 const logMeta = document.getElementById('log-meta');
+const logMetaCount = document.getElementById('log-meta-count');
 const logMetaSummary = document.getElementById('log-meta-summary');
 const exportBtn = document.getElementById('export-btn');
 const importBtn = document.getElementById('import-btn');
@@ -868,14 +869,41 @@ function summarizeEntries(entries) {
   };
 }
 
-function formatSummaryBits(summary) {
-  return [
-    `${summary.count} fill-up${summary.count === 1 ? '' : 's'}`,
-    fmtMoney(summary.spend),
-    summary.miles > 0 ? `${Math.round(summary.miles).toLocaleString()} mi` : null,
-    summary.avgMpg != null ? `${summary.avgMpg.toFixed(1)} mpg avg` : null,
-    summary.avgPpg != null ? `${fmtPricePerGallon(summary.avgPpg)}/gal avg` : null,
-  ].filter(Boolean);
+function formatFillCount(count) {
+  return `${count} fill-up${count === 1 ? '' : 's'}`;
+}
+
+// Metrics only (count lives on the title row). Labels stay readable without color.
+function summaryMetrics(summary) {
+  const metrics = [];
+  metrics.push({ kind: 'spend', value: fmtMoney(summary.spend), label: 'spent' });
+  if (summary.miles > 0) {
+    metrics.push({
+      kind: 'miles',
+      value: `${Math.round(summary.miles).toLocaleString()} mi`,
+      label: 'driven',
+    });
+  }
+  if (summary.avgMpg != null) {
+    metrics.push({ kind: 'mpg', value: summary.avgMpg.toFixed(1), label: 'mpg' });
+  }
+  if (summary.avgPpg != null) {
+    metrics.push({ kind: 'price', value: fmtPricePerGallon(summary.avgPpg), label: '/gal' });
+  }
+  return metrics;
+}
+
+function summaryStatsHtml(summary) {
+  return summaryMetrics(summary).map((metric) => (
+    `<span class="stat stat-${metric.kind}">` +
+      `<span class="stat-value">${escapeHtml(metric.value)}</span>` +
+      `<span class="stat-label">${escapeHtml(metric.label)}</span>` +
+    `</span>`
+  )).join('');
+}
+
+function formatSummarySpoken(summary) {
+  return [formatFillCount(summary.count), ...summaryMetrics(summary).map((m) => `${m.value} ${m.label}`)];
 }
 
 function isMonthOpen(key) {
@@ -911,28 +939,148 @@ function createEntryElement(entry, { arrive = false } = {}) {
   return li;
 }
 
-// Monthly series matching log summaries, oldest → newest.
-// Keys: fills · spend · miles · mpg · price (same order as formatSummaryBits).
-function collectMonthlyTrendSeries(entriesNewestFirst) {
-  const monthsOldestFirst = [...groupEntriesByMonth(entriesNewestFirst)].reverse();
+// Keep chart point counts readable (~1–16). Prefer per-fill when sparse;
+// roll up to week → month → quarter → year as history grows.
+const MAX_CHART_POINTS = 16;
+
+function chooseTrendGrain(entriesOldestFirst) {
+  const n = entriesOldestFirst.length;
+  if (n <= MAX_CHART_POINTS) return 'fill';
+
+  const t0 = new Date(entriesOldestFirst[0].datetime).getTime();
+  const t1 = new Date(entriesOldestFirst[n - 1].datetime).getTime();
+  if (!Number.isFinite(t0) || !Number.isFinite(t1)) return 'month';
+  const days = Math.max(1, (t1 - t0) / 86400000);
+
+  const candidates = [
+    { id: 'week', approx: days / 7 },
+    { id: 'month', approx: days / 30.44 },
+    { id: 'quarter', approx: days / 91.31 },
+    { id: 'year', approx: days / 365.25 },
+  ];
+  for (const candidate of candidates) {
+    if (candidate.approx <= MAX_CHART_POINTS) return candidate.id;
+  }
+  return 'year';
+}
+
+function isoWeekBucketKey(date) {
+  // ISO week: Monday-based week containing the date.
+  const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const year = utc.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+function grainBucketKey(entry, grain) {
+  if (grain === 'fill') return entry.id;
+  const d = new Date(entry.datetime);
+  if (Number.isNaN(d.getTime())) return 'unknown';
+  const year = d.getFullYear();
+  if (grain === 'week') return isoWeekBucketKey(d);
+  if (grain === 'month') return `${year}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  if (grain === 'quarter') return `${year}-Q${Math.floor(d.getMonth() / 3) + 1}`;
+  return String(year);
+}
+
+function seriesSpansYears(entries) {
+  const years = new Set();
+  for (const entry of entries) {
+    const d = new Date(entry.datetime);
+    if (!Number.isNaN(d.getTime())) years.add(d.getFullYear());
+  }
+  return years.size > 1;
+}
+
+function fmtChartBucketLabel(grain, bucketKey, sampleEntry, { includeYear = false } = {}) {
+  if (grain === 'fill') {
+    const d = new Date(sampleEntry.datetime);
+    if (Number.isNaN(d.getTime())) return 'Unknown';
+    return d.toLocaleString(undefined, includeYear
+      ? { month: 'short', day: 'numeric', year: '2-digit' }
+      : { month: 'short', day: 'numeric' });
+  }
+  if (bucketKey === 'unknown') return 'Unknown';
+  if (grain === 'week') {
+    const d = new Date(sampleEntry.datetime);
+    return d.toLocaleString(undefined, includeYear
+      ? { month: 'short', day: 'numeric', year: '2-digit' }
+      : { month: 'short', day: 'numeric' });
+  }
+  if (grain === 'month') {
+    const [year, month] = bucketKey.split('-').map(Number);
+    if (!year || !month) return bucketKey;
+    const d = new Date(year, month - 1, 1);
+    const monthName = d.toLocaleString(undefined, { month: 'short' });
+    // Prefer "Oct '25" over locale "Oct 25", which reads like a day-of-month.
+    return includeYear ? `${monthName} '${String(year).slice(2)}` : monthName;
+  }
+  if (grain === 'quarter') {
+    const match = /^(\d{4})-Q([1-4])$/.exec(bucketKey);
+    if (!match) return bucketKey;
+    return includeYear ? `Q${match[2]} '${String(match[1]).slice(2)}` : `Q${match[2]}`;
+  }
+  return bucketKey;
+}
+
+const GRAIN_PERIOD_UNIT = {
+  fill: '/fill',
+  week: '/wk',
+  month: '/mo',
+  quarter: '/qtr',
+  year: '/yr',
+};
+
+const GRAIN_ARIA = {
+  fill: 'fill-up',
+  week: 'week',
+  month: 'month',
+  quarter: 'quarter',
+  year: 'year',
+};
+
+// Adaptive series matching log summary metrics, oldest → newest.
+function collectTrendSeries(entriesNewestFirst) {
+  const oldestFirst = [...entriesNewestFirst].reverse();
+  const grain = chooseTrendGrain(oldestFirst);
+  const includeYear = seriesSpansYears(oldestFirst);
+
+  const bucketOrder = [];
+  const buckets = new Map();
+  for (const entry of oldestFirst) {
+    const key = grainBucketKey(entry, grain);
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+      bucketOrder.push(key);
+    }
+    buckets.get(key).push(entry);
+  }
+
+  const keys = bucketOrder.slice(-MAX_CHART_POINTS);
   const fills = [];
   const spend = [];
   const miles = [];
   const mpg = [];
   const price = [];
 
-  for (const group of monthsOldestFirst) {
-    const summary = summarizeEntries(group.entries);
-    const point = (value) => ({ value, monthKey: group.key });
+  for (const key of keys) {
+    const groupEntries = buckets.get(key);
+    const summary = summarizeEntries(groupEntries);
+    const label = fmtChartBucketLabel(grain, key, groupEntries[0], { includeYear });
+    const point = (value) => ({ value, bucketKey: key, label });
 
-    fills.push(point(summary.count));
+    // Per-fill "count" is always 1 — skip that chart; use buckets for counts.
+    if (grain !== 'fill') fills.push(point(summary.count));
     spend.push(point(summary.spend));
     if (summary.miles > 0) miles.push(point(summary.miles));
     if (summary.avgMpg != null) mpg.push(point(summary.avgMpg));
     if (summary.avgPpg != null) price.push(point(summary.avgPpg));
   }
 
-  return { fills, spend, miles, mpg, price };
+  return { fills, spend, miles, mpg, price, grain };
 }
 
 function seriesStats(points) {
@@ -947,28 +1095,6 @@ function seriesStats(points) {
     last: values[values.length - 1],
     first: values[0],
   };
-}
-
-function monthKeyYear(monthKey) {
-  const year = Number(String(monthKey).slice(0, 4));
-  return Number.isFinite(year) ? year : null;
-}
-
-function seriesSpansYears(points) {
-  const years = new Set(points.map((p) => monthKeyYear(p.monthKey)).filter((y) => y != null));
-  return years.size > 1;
-}
-
-// Month-only by default; include a short year when the series crosses years.
-function fmtChartMonth(monthKey, { includeYear = false } = {}) {
-  if (monthKey === 'unknown') return 'Unknown';
-  const [year, month] = monthKey.split('-').map(Number);
-  if (!year || !month) return monthKey;
-  const d = new Date(year, month - 1, 1);
-  if (includeYear) {
-    return d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
-  }
-  return d.toLocaleString(undefined, { month: 'short' });
 }
 
 // Up to 4 ticks: always ends, plus evenly spaced middles when needed.
@@ -994,19 +1120,20 @@ function renderLineChart(bodyEl, avgEl, {
   stroke = 'rgba(255, 107, 53, 0.9)',
   fill = '#ff6b35',
   ariaName,
+  grain = 'month',
 }) {
-  if (!points || points.length < 2) {
+  if (!points || points.length < 1) {
     bodyEl.innerHTML = '';
     avgEl.textContent = '';
     return false;
   }
 
-  const recent = points.slice(-12);
+  const recent = points.slice(-MAX_CHART_POINTS);
   const all = seriesStats(points);
   const windowStats = seriesStats(recent);
   const delta = windowStats.last - windowStats.first;
   const deltaLabel = formatTrendDelta(delta, formatValue, windowStats.avg);
-  const includeYear = seriesSpansYears(recent);
+  const grainWord = GRAIN_ARIA[grain] || 'period';
 
   avgEl.textContent = unitLabel
     ? `Avg ${formatValue(all.avg)} ${unitLabel}`
@@ -1026,7 +1153,7 @@ function renderLineChart(bodyEl, avgEl, {
       x,
       y,
       value: point.value,
-      label: fmtChartMonth(point.monthKey, { includeYear }),
+      label: point.label,
     };
   });
   const pointsAttr = coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
@@ -1035,23 +1162,25 @@ function renderLineChart(bodyEl, avgEl, {
   const lowIdx = recent.findIndex((p) => p.value === windowStats.min);
   const high = coords[highIdx];
   const low = coords[lowIdx];
+  const showLine = coords.length >= 2;
 
   const xLabels = xAxisLabelIndexes(recent.length).map((i) => {
     const pct = recent.length === 1 ? 50 : (i / (recent.length - 1)) * 100;
     return `<span style="left:${pct.toFixed(2)}%">${escapeHtml(coords[i].label)}</span>`;
   }).join('');
 
-  const metaText = [
-    `${formatValue(windowStats.max)} high`,
-    `${formatValue(windowStats.min)} low`,
-    `${formatValue(windowStats.last)} now`,
-    // "change" = first→last month in the visible window
-    `${deltaLabel} change`,
-  ].join(' · ');
+  const metaText = coords.length === 1
+    ? `${formatValue(windowStats.last)} now`
+    : [
+      `${formatValue(windowStats.max)} high`,
+      `${formatValue(windowStats.min)} low`,
+      `${formatValue(windowStats.last)} now`,
+      `${deltaLabel} change`,
+    ].join(' · ');
 
   bodyEl.setAttribute(
     'aria-label',
-    `${ariaName} by month over the last ${recent.length} months. Latest ${formatValue(windowStats.last)}, average ${formatValue(windowStats.avg)}, high ${formatValue(windowStats.max)}, low ${formatValue(windowStats.min)}.`
+    `${ariaName} by ${grainWord} over ${recent.length} ${grainWord}${recent.length === 1 ? '' : 's'}. Latest ${formatValue(windowStats.last)}, average ${formatValue(windowStats.avg)}, high ${formatValue(windowStats.max)}, low ${formatValue(windowStats.min)}.`
   );
   bodyEl.innerHTML = `
     <div class="trend-chart-plot">
@@ -1064,16 +1193,16 @@ function renderLineChart(bodyEl, avgEl, {
         <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <line x1="0" y1="${avgY.toFixed(1)}" x2="${width}" y2="${avgY.toFixed(1)}"
             stroke="rgba(154, 160, 172, 0.35)" stroke-width="1" stroke-dasharray="4 4" />
-          <polyline
+          ${showLine ? `<polyline
             fill="none"
             stroke="${stroke}"
             stroke-width="2.5"
             stroke-linecap="round"
             stroke-linejoin="round"
             points="${pointsAttr}"
-          />
-          <circle cx="${high.x.toFixed(1)}" cy="${high.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />
-          <circle cx="${low.x.toFixed(1)}" cy="${low.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />
+          />` : ''}
+          ${showLine ? `<circle cx="${high.x.toFixed(1)}" cy="${high.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />
+          <circle cx="${low.x.toFixed(1)}" cy="${low.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />` : ''}
           <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.5" fill="${fill}" />
         </svg>
         <div class="trend-chart-x" aria-hidden="true">${xLabels}</div>
@@ -1085,38 +1214,43 @@ function renderLineChart(bodyEl, avgEl, {
 }
 
 function renderTrends(entriesNewestFirst) {
-  const { fills, spend, miles, mpg, price } = collectMonthlyTrendSeries(entriesNewestFirst);
+  const { fills, spend, miles, mpg, price, grain } = collectTrendSeries(entriesNewestFirst);
+  const period = GRAIN_PERIOD_UNIT[grain] || '/mo';
 
   // Same order as log summaries: fill-ups · spend · miles · mpg · $/gal
   const fillsOk = renderLineChart(chartFillsBodyEl, chartFillsAvgEl, {
     points: fills,
     formatValue: (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1)),
-    unitLabel: '/mo',
+    unitLabel: period,
     stroke: 'rgba(200, 160, 255, 0.95)',
     fill: '#c8a0ff',
-    ariaName: 'Fill-ups per month',
+    ariaName: 'Fill-ups',
+    grain,
   });
   const spendOk = renderLineChart(chartSpendBodyEl, chartSpendAvgEl, {
     points: spend,
     formatValue: (n) => fmtMoney(n),
-    unitLabel: '/mo',
+    unitLabel: period,
     stroke: 'rgba(255, 180, 70, 0.95)',
     fill: '#ffb446',
-    ariaName: 'Spend per month',
+    ariaName: 'Spend',
+    grain,
   });
   const milesOk = renderLineChart(chartMilesBodyEl, chartMilesAvgEl, {
     points: miles,
     formatValue: (n) => Math.round(n).toLocaleString(),
-    unitLabel: 'mi/mo',
+    unitLabel: `mi${period}`,
     stroke: 'rgba(120, 210, 160, 0.95)',
     fill: '#78d2a0',
-    ariaName: 'Miles per month',
+    ariaName: 'Miles',
+    grain,
   });
   const mpgOk = renderLineChart(chartMpgBodyEl, chartMpgAvgEl, {
     points: mpg,
     formatValue: (n) => n.toFixed(1),
     unitLabel: 'mpg',
-    ariaName: 'Average MPG by month',
+    ariaName: 'Average MPG',
+    grain,
   });
   const priceOk = renderLineChart(chartPriceBodyEl, chartPriceAvgEl, {
     points: price,
@@ -1124,7 +1258,8 @@ function renderTrends(entriesNewestFirst) {
     unitLabel: '/gal',
     stroke: 'rgba(110, 180, 255, 0.9)',
     fill: '#6eb4ff',
-    ariaName: 'Average price per gallon by month',
+    ariaName: 'Average price per gallon',
+    grain,
   });
 
   chartFillsEl.hidden = !fillsOk;
@@ -1166,11 +1301,14 @@ function render() {
   updateStorageUsageBadge();
 
   if (entries.length) {
+    const allSummary = summarizeEntries(entries);
     logMeta.hidden = false;
-    logMetaSummary.textContent = formatSummaryBits(summarizeEntries(entries)).join(' · ');
+    logMetaCount.textContent = formatFillCount(allSummary.count);
+    logMetaSummary.innerHTML = summaryStatsHtml(allSummary);
   } else {
     logMeta.hidden = true;
-    logMetaSummary.textContent = '';
+    logMetaCount.textContent = '';
+    logMetaSummary.innerHTML = '';
   }
 
   const arrivingId = revealEntryId;
@@ -1178,7 +1316,7 @@ function render() {
   groups.forEach((group) => {
     const open = isMonthOpen(group.key);
     const summary = summarizeEntries(group.entries);
-    const summaryBits = formatSummaryBits(summary);
+    const spoken = formatSummarySpoken(summary);
 
     const monthLi = document.createElement('li');
     monthLi.className = 'month-group';
@@ -1191,14 +1329,15 @@ function render() {
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     toggle.setAttribute(
       'aria-label',
-      `${monthLabelFromKey(group.key)}. ${summaryBits.join(', ')}. ${open ? 'Collapse' : 'Expand'} fill-ups.`
+      `${monthLabelFromKey(group.key)}. ${spoken.join(', ')}. ${open ? 'Collapse' : 'Expand'} fill-ups.`
     );
     toggle.innerHTML = `
       <span class="month-toggle-row">
         <span class="month-label">${escapeHtml(monthLabelFromKey(group.key))}</span>
+        <span class="month-count">${escapeHtml(String(summary.count))}</span>
         <span class="month-chevron" aria-hidden="true">▾</span>
       </span>
-      <span class="month-summary">${escapeHtml(summaryBits.join(' · '))}</span>
+      <span class="month-summary summary-stats">${summaryStatsHtml(summary)}</span>
     `;
 
     const panel = document.createElement('div');
@@ -1748,7 +1887,7 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.16.0';
 // Short build id while iterating on a PR — bump + mention in chat each push so
 // the footer can be matched to the update. Cleared to '' before tagging a
 // production release. Never shown on the live Pages host even if forgotten.
@@ -1757,9 +1896,9 @@ const PRODUCTION_HOST = 'jr00ck.github.io';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Trends are monthly now — fill-ups, spend, miles, MPG, and $/gal match the log summaries',
-  'Compact chart stats: high · low · now · ↑/↓ change',
-  'Month labels on charts; short year appears only when the window spans years',
+  'Log summaries put fill-up count on the title row with compact tinted stats underneath',
+  'Trends adapt the time grain (fill → week → month → quarter → year) so charts stay readable',
+  'Single fill-ups can show as a single chart dot; denser history rolls up automatically',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 

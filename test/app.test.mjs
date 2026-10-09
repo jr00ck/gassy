@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.15.0', () => {
+test('boots without errors and shows v1.16.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.15.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.16.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,7 +69,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.15\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.16\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 1);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -132,10 +132,11 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   assert.ok(d.querySelector('.month-toggle'));
   assert.equal(d.getElementById('export-btn').disabled, false);
   assert.match(d.getElementById('mileage').placeholder, /^≈/);
-  // One MPG sample isn't enough for a trend line yet.
-  assert.equal(d.getElementById('chart-mpg').hidden, true);
-  assert.match(d.getElementById('log-meta-summary').textContent, /2 fill-ups/);
+  // Sparse history uses per-fill points — one MPG sample is a single dot.
+  assert.equal(d.getElementById('chart-mpg').hidden, false);
+  assert.match(d.getElementById('log-meta-count').textContent, /2 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /spent/);
 
   d.getElementById('mileage').value = '5000';
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -157,16 +158,17 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
-  // All three fills are in the same month — monthly charts need 2+ months.
+  // Same-month history uses per-fill points (fill-ups chart stays bucket-only).
   assert.equal(d.getElementById('chart-fills').hidden, true);
-  assert.equal(d.getElementById('chart-spend').hidden, true);
-  assert.equal(d.getElementById('chart-miles').hidden, true);
-  assert.equal(d.getElementById('chart-mpg').hidden, true);
-  assert.equal(d.getElementById('chart-price').hidden, true);
-  assert.match(d.getElementById('log-meta-summary').textContent, /3 fill-ups/);
+  assert.equal(d.getElementById('chart-spend').hidden, false);
+  assert.equal(d.getElementById('chart-miles').hidden, false);
+  assert.equal(d.getElementById('chart-mpg').hidden, false);
+  assert.equal(d.getElementById('chart-price').hidden, false);
+  assert.match(d.getElementById('log-meta-count').textContent, /3 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
-  assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
-  assert.match(d.querySelector('.month-summary').textContent, /mpg avg/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mpg/);
+  assert.match(d.querySelector('.month-summary').textContent, /mpg/);
+  assert.match(d.querySelector('.month-count').textContent, /^3$/);
 
   d.getElementById('nav-trends').click();
   assert.equal(d.getElementById('page-log').hidden, true);
@@ -338,7 +340,7 @@ test('Trends charts follow log summary order: fills, spend, miles, mpg, price', 
   assert.deepEqual(order, ['chart-fills', 'chart-spend', 'chart-miles', 'chart-mpg', 'chart-price']);
 });
 
-test('monthly Trends charts render with middots and change label', () => {
+test('Trends charts render with middots and change label', () => {
   const seed = [
     { id: 'm1', datetime: '2026-08-10T12:00', mileage: 30000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
     { id: 'm2', datetime: '2026-09-10T12:00', mileage: 30300, pricePerGallon: 3.599, totalCost: 42, location: '', lat: null, lon: null, source: null },
@@ -348,7 +350,8 @@ test('monthly Trends charts render with middots and change label', () => {
     dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
   });
 
-  assert.equal(d.getElementById('chart-fills').hidden, false);
+  // Few fills → per-fill grain (fill-ups chart is bucket-only).
+  assert.equal(d.getElementById('chart-fills').hidden, true);
   assert.equal(d.getElementById('chart-spend').hidden, false);
   assert.equal(d.getElementById('chart-miles').hidden, false);
   assert.equal(d.getElementById('chart-mpg').hidden, false);
@@ -356,11 +359,11 @@ test('monthly Trends charts render with middots and change label', () => {
 
   const meta = d.getElementById('chart-spend-body').querySelector('.trend-chart-meta').textContent;
   assert.match(meta, /high · .* low · .* now · .* change/);
-  assert.ok(d.querySelector('#chart-fills-body .trend-chart-x'));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.15.0');
+  assert.ok(d.querySelector('#chart-spend-body .trend-chart-x'));
+  assert.equal(d.getElementById('app-version').textContent, 'v1.16.0');
 });
 
-test('chart month labels omit year unless the window spans years', () => {
+test('chart date labels omit year unless the window spans years', () => {
   const sameYear = [
     { id: 'y1', datetime: '2026-08-10T12:00', mileage: 30000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
     { id: 'y2', datetime: '2026-09-10T12:00', mileage: 30300, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
@@ -370,9 +373,12 @@ test('chart month labels omit year unless the window spans years', () => {
     const { d } = boot((dom) => {
       dom.window.localStorage.setItem('gassy.entries', JSON.stringify(sameYear));
     });
-    const labels = [...d.querySelectorAll('#chart-fills-body .trend-chart-x span')].map((s) => s.textContent);
+    const labels = [...d.querySelectorAll('#chart-spend-body .trend-chart-x span')].map((s) => s.textContent);
     assert.ok(labels.length >= 2);
-    assert.ok(labels.every((t) => !/\d{2}/.test(t)), `expected month-only labels, got ${labels.join(',')}`);
+    assert.ok(
+      labels.every((t) => !/['’]\d{2}\b/.test(t) && !/\b20\d{2}\b/.test(t) && !/,\s*\d{2}\b/.test(t)),
+      `expected no year in same-year labels, got ${labels.join(',')}`
+    );
   }
   const crossYear = [
     { id: 'c1', datetime: '2025-11-10T12:00', mileage: 29000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
@@ -383,10 +389,43 @@ test('chart month labels omit year unless the window spans years', () => {
     const { d } = boot((dom) => {
       dom.window.localStorage.setItem('gassy.entries', JSON.stringify(crossYear));
     });
-    const labels = [...d.querySelectorAll('#chart-fills-body .trend-chart-x span')].map((s) => s.textContent);
+    const labels = [...d.querySelectorAll('#chart-spend-body .trend-chart-x span')].map((s) => s.textContent);
     assert.ok(labels.length >= 2);
-    assert.ok(labels.some((t) => /\d{2}/.test(t)), `expected year on multi-year labels, got ${labels.join(',')}`);
+    assert.ok(
+      labels.some((t) => /['’]\d{2}\b/.test(t) || /\b20\d{2}\b/.test(t) || /,\s*\d{2}\b/.test(t)),
+      `expected year on multi-year labels, got ${labels.join(',')}`
+    );
   }
+});
+
+test('dense history rolls charts up so point count stays capped', () => {
+  const seed = [];
+  for (let i = 0; i < 40; i += 1) {
+    const month = (i % 12) + 1;
+    const year = 2023 + Math.floor(i / 12);
+    seed.push({
+      id: `d${i}`,
+      datetime: `${year}-${String(month).padStart(2, '0')}-10T12:00`,
+      mileage: 20000 + i * 300,
+      pricePerGallon: 3.499,
+      totalCost: 40,
+      location: '',
+      lat: null,
+      lon: null,
+      source: null,
+    });
+  }
+  const { d } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
+  });
+
+  assert.equal(d.getElementById('chart-fills').hidden, false);
+  assert.equal(d.getElementById('chart-spend').hidden, false);
+  const dots = d.querySelectorAll('#chart-spend-body svg circle');
+  assert.ok(dots.length >= 1);
+  assert.ok(dots.length <= 16, `expected <=16 markers, got ${dots.length}`);
+  const labels = [...d.querySelectorAll('#chart-spend-body .trend-chart-x span')];
+  assert.ok(labels.length <= 4);
 });
 
 test('mileage upper bound allows historically normal fill-up intervals', () => {
@@ -560,15 +599,15 @@ test('long log starts fully collapsed; adding a fill-up reveals that month', asy
 
   const groups = [...d.querySelectorAll('.month-group')];
   assert.equal(groups.length, 6);
-  assert.match(d.getElementById('log-meta-summary').textContent, /6 fill-ups/);
+  assert.match(d.getElementById('log-meta-count').textContent, /6 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
-  assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
+  assert.match(d.getElementById('log-meta-summary').textContent, /mpg/);
   assert.ok(groups.every((g) => !g.classList.contains('is-open')));
   assert.ok(groups.every((g) => g.querySelector('.month-toggle').getAttribute('aria-expanded') === 'false'));
-  assert.match(groups[0].querySelector('.month-summary').textContent, /fill-up/);
+  assert.match(groups[0].querySelector('.month-count').textContent, /^1$/);
   assert.match(groups[0].querySelector('.month-summary').textContent, /\$/);
-  assert.match(groups[0].querySelector('.month-summary').textContent, /mpg avg/);
+  assert.match(groups[0].querySelector('.month-summary').textContent, /mpg/);
 
   const toggle = groups[0].querySelector('.month-toggle');
   toggle.click();
