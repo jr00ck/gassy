@@ -4,6 +4,11 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
+## [1.16.0] - 2026-10-09
+
+### Features
+
+- Compact log stats and adaptive Trends grain
 ## [1.15.0] - 2026-10-09
 
 ### Features
