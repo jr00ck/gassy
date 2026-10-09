@@ -139,22 +139,31 @@
   </section>
 
   <section id="page-trends" class="page" hidden aria-label="Trends">
-    <p id="trends-empty" class="hint trends-empty">Add a few fill-ups to see MPG, price, and miles trends.</p>
+    <p id="trends-empty" class="hint trends-empty">Add a few fill-ups to see spend, miles, MPG, and price trends.</p>
     <div id="trends-content" class="trends-content" hidden>
+      <!-- Order matches log summary: spend · miles · mpg · $/gal -->
+      <article id="chart-spend" class="trend-chart" hidden aria-labelledby="chart-spend-heading">
+        <div class="trend-chart-head">
+          <h2 id="chart-spend-heading">Spend</h2>
+          <p id="chart-spend-avg" class="trend-chart-avg"></p>
+        </div>
+        <div id="chart-spend-body" class="trend-chart-body" role="img"></div>
+      </article>
+
+      <article id="chart-miles" class="trend-chart" hidden aria-labelledby="chart-miles-heading">
+        <div class="trend-chart-head">
+          <h2 id="chart-miles-heading">Miles</h2>
+          <p id="chart-miles-avg" class="trend-chart-avg"></p>
+        </div>
+        <div id="chart-miles-body" class="trend-chart-body" role="img"></div>
+      </article>
+
       <article id="chart-mpg" class="trend-chart" hidden aria-labelledby="chart-mpg-heading">
         <div class="trend-chart-head">
           <h2 id="chart-mpg-heading">MPG</h2>
           <p id="chart-mpg-avg" class="trend-chart-avg"></p>
         </div>
         <div id="chart-mpg-body" class="trend-chart-body" role="img"></div>
-      </article>
-
-      <article id="chart-miles" class="trend-chart" hidden aria-labelledby="chart-miles-heading">
-        <div class="trend-chart-head">
-          <h2 id="chart-miles-heading">Miles per fill-up</h2>
-          <p id="chart-miles-avg" class="trend-chart-avg"></p>
-        </div>
-        <div id="chart-miles-body" class="trend-chart-body" role="img"></div>
       </article>
 
       <article id="chart-price" class="trend-chart" hidden aria-labelledby="chart-price-heading">

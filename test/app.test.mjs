@@ -157,15 +157,19 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
+  assert.equal(d.getElementById('chart-spend').hidden, false);
+  assert.ok(d.querySelector('#chart-spend-body svg'));
+  assert.equal(d.getElementById('chart-miles').hidden, false);
+  assert.ok(d.querySelector('#chart-miles-body svg'));
   assert.equal(d.getElementById('chart-mpg').hidden, false);
   assert.match(d.getElementById('chart-mpg-avg').textContent, /mpg/i);
   assert.ok(d.querySelector('#chart-mpg-body svg'));
   assert.match(d.getElementById('chart-mpg-body').textContent, /high/i);
   assert.match(d.getElementById('chart-mpg-body').textContent, /low/i);
+  assert.match(d.getElementById('chart-mpg-body').textContent, /now/i);
+  assert.ok(d.querySelector('#chart-mpg-body .trend-chart-x'));
   assert.equal(d.getElementById('chart-price').hidden, false);
   assert.ok(d.querySelector('#chart-price-body svg'));
-  assert.equal(d.getElementById('chart-miles').hidden, false);
-  assert.ok(d.querySelector('#chart-miles-body svg'));
   assert.match(d.getElementById('log-meta-summary').textContent, /3 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
@@ -336,9 +340,9 @@ test('auto-locates once when starting a new fill-up, not again on later blurs', 
   assert.equal(gpsCalled, 2);
 });
 
-test('Trends charts list Miles directly under MPG', () => {
-  const order = [...html.matchAll(/id="(chart-(?:mpg|miles|price))"/g)].map((m) => m[1]);
-  assert.deepEqual(order, ['chart-mpg', 'chart-miles', 'chart-price']);
+test('Trends charts follow log summary order: spend, miles, mpg, price', () => {
+  const order = [...html.matchAll(/id="(chart-(?:spend|miles|mpg|price))"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['chart-spend', 'chart-miles', 'chart-mpg', 'chart-price']);
 });
 
 test('mileage upper bound allows historically normal fill-up intervals', () => {

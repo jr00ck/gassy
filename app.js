@@ -24,15 +24,18 @@ const navLog = document.getElementById('nav-log');
 const navTrends = document.getElementById('nav-trends');
 const trendsEmpty = document.getElementById('trends-empty');
 const trendsContent = document.getElementById('trends-content');
+const chartSpendEl = document.getElementById('chart-spend');
+const chartSpendAvgEl = document.getElementById('chart-spend-avg');
+const chartSpendBodyEl = document.getElementById('chart-spend-body');
+const chartMilesEl = document.getElementById('chart-miles');
+const chartMilesAvgEl = document.getElementById('chart-miles-avg');
+const chartMilesBodyEl = document.getElementById('chart-miles-body');
 const chartMpgEl = document.getElementById('chart-mpg');
 const chartMpgAvgEl = document.getElementById('chart-mpg-avg');
 const chartMpgBodyEl = document.getElementById('chart-mpg-body');
 const chartPriceEl = document.getElementById('chart-price');
 const chartPriceAvgEl = document.getElementById('chart-price-avg');
 const chartPriceBodyEl = document.getElementById('chart-price-body');
-const chartMilesEl = document.getElementById('chart-miles');
-const chartMilesAvgEl = document.getElementById('chart-miles-avg');
-const chartMilesBodyEl = document.getElementById('chart-miles-body');
 const storageUsageEl = document.getElementById('storage-usage');
 const importPhotoBtn = document.getElementById('import-photo-btn');
 const photoInput = document.getElementById('photo-input');
@@ -905,15 +908,22 @@ function createEntryElement(entry, { arrive = false } = {}) {
   return li;
 }
 
-// Interval series (MPG / miles between fills) and per-fill price, oldest → newest.
+// Per-fill and interval series as { value, datetime }, oldest → newest.
+// Order of returned keys matches log summary stats (spend · miles · mpg · $/gal).
 function collectTrendSeries(entriesNewestFirst) {
   const chronological = [...entriesNewestFirst].reverse();
+  const spend = [];
+  const price = [];
   const mpg = [];
   const miles = [];
-  const price = [];
 
   for (const entry of chronological) {
-    if (entry.pricePerGallon > 0) price.push(Number(entry.pricePerGallon));
+    if (isFinite(entry.totalCost)) {
+      spend.push({ value: Number(entry.totalCost), datetime: entry.datetime });
+    }
+    if (entry.pricePerGallon > 0) {
+      price.push({ value: Number(entry.pricePerGallon), datetime: entry.datetime });
+    }
   }
 
   for (let i = 1; i < chronological.length; i++) {
@@ -922,16 +932,17 @@ function collectTrendSeries(entriesNewestFirst) {
     const gallons = cur.pricePerGallon > 0 ? cur.totalCost / cur.pricePerGallon : 0;
     const mpgVal = calcMpg(cur.mileage, gallons, prev.mileage);
     if (mpgVal != null) {
-      mpg.push(mpgVal);
-      miles.push(cur.mileage - prev.mileage);
+      mpg.push({ value: mpgVal, datetime: cur.datetime });
+      miles.push({ value: cur.mileage - prev.mileage, datetime: cur.datetime });
     }
   }
 
-  return { mpg, miles, price };
+  return { spend, miles, mpg, price };
 }
 
-function seriesStats(values) {
-  if (!values.length) return null;
+function seriesStats(points) {
+  if (!points.length) return null;
+  const values = points.map((p) => p.value);
   const sum = values.reduce((a, b) => a + b, 0);
   return {
     count: values.length,
@@ -943,28 +954,47 @@ function seriesStats(values) {
   };
 }
 
+function fmtChartDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// Up to 4 date ticks: always ends, plus evenly spaced middles when needed.
+function xAxisLabelIndexes(count) {
+  if (count <= 1) return [0];
+  if (count === 2) return [0, 1];
+  if (count === 3) return [0, 1, 2];
+  if (count <= 4) return [...Array(count).keys()];
+  return [0, Math.round((count - 1) / 3), Math.round((2 * (count - 1)) / 3), count - 1];
+}
+
+function formatTrendDelta(delta, formatValue, avg) {
+  const abs = Math.abs(delta);
+  const threshold = Math.abs(avg) * 0.02 || 0.05;
+  if (abs < threshold) return '→';
+  return `${delta > 0 ? '↑' : '↓'}${formatValue(abs)}`;
+}
+
 function renderLineChart(bodyEl, avgEl, {
-  values,
+  points,
   formatValue,
   unitLabel,
   stroke = 'rgba(255, 107, 53, 0.9)',
   fill = '#ff6b35',
   ariaName,
 }) {
-  if (!values || values.length < 2) {
+  if (!points || points.length < 2) {
     bodyEl.innerHTML = '';
     avgEl.textContent = '';
     return false;
   }
 
-  const recent = values.slice(-12);
-  const all = seriesStats(values);
+  const recent = points.slice(-12);
+  const all = seriesStats(points);
   const windowStats = seriesStats(recent);
   const delta = windowStats.last - windowStats.first;
-  const deltaAbs = Math.abs(delta);
-  const trendWord = deltaAbs < (Math.abs(windowStats.avg) * 0.02 || 0.05)
-    ? 'flat'
-    : delta > 0 ? 'up' : 'down';
+  const deltaLabel = formatTrendDelta(delta, formatValue, windowStats.avg);
 
   avgEl.textContent = unitLabel
     ? `Avg ${formatValue(all.avg)} ${unitLabel}`
@@ -977,34 +1007,26 @@ function renderLineChart(bodyEl, avgEl, {
   const max = windowStats.max;
   const range = max - min || 1;
   const avgY = height - padY - ((windowStats.avg - min) / range) * (height - padY * 2);
-  const coords = recent.map((value, i) => {
+  const coords = recent.map((point, i) => {
     const x = recent.length === 1 ? width / 2 : (i / (recent.length - 1)) * width;
-    const y = height - padY - ((value - min) / range) * (height - padY * 2);
-    return { x, y, value };
+    const y = height - padY - ((point.value - min) / range) * (height - padY * 2);
+    return { x, y, value: point.value, datetime: point.datetime };
   });
   const pointsAttr = coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const last = coords[coords.length - 1];
-  const highIdx = recent.indexOf(windowStats.max);
-  const lowIdx = recent.indexOf(windowStats.min);
+  const highIdx = recent.findIndex((p) => p.value === windowStats.max);
+  const lowIdx = recent.findIndex((p) => p.value === windowStats.min);
   const high = coords[highIdx];
   const low = coords[lowIdx];
 
-  const metaBits = [
-    `Last ${recent.length}`,
-    `high ${formatValue(windowStats.max)}`,
-    `low ${formatValue(windowStats.min)}`,
-    `latest ${formatValue(windowStats.last)}`,
-    trendWord === 'flat'
-      ? 'holding steady'
-      : `${trendWord} ${formatValue(deltaAbs)} from first in window`,
-  ];
-  if (values.length > recent.length) {
-    metaBits.push(`all-time avg ${formatValue(all.avg)}`);
-  }
+  const xLabels = xAxisLabelIndexes(recent.length).map((i) => {
+    const pct = recent.length === 1 ? 50 : (i / (recent.length - 1)) * 100;
+    return `<span style="left:${pct.toFixed(2)}%">${escapeHtml(fmtChartDate(recent[i].datetime))}</span>`;
+  }).join('');
 
   bodyEl.setAttribute(
     'aria-label',
-    `${ariaName} over the last ${recent.length} points. Latest ${formatValue(windowStats.last)}, average ${formatValue(windowStats.avg)}, high ${formatValue(windowStats.max)}, low ${formatValue(windowStats.min)}.`
+    `${ariaName} over the last ${recent.length} fill-ups. Latest ${formatValue(windowStats.last)}, average ${formatValue(windowStats.avg)}, high ${formatValue(windowStats.max)}, low ${formatValue(windowStats.min)}.`
   );
   bodyEl.innerHTML = `
     <div class="trend-chart-plot">
@@ -1029,43 +1051,59 @@ function renderLineChart(bodyEl, avgEl, {
           <circle cx="${low.x.toFixed(1)}" cy="${low.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />
           <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.5" fill="${fill}" />
         </svg>
+        <div class="trend-chart-x" aria-hidden="true">${xLabels}</div>
       </div>
     </div>
-    <p class="trend-chart-meta">${escapeHtml(metaBits.join(' · '))}</p>
+    <p class="trend-chart-meta">
+      <span>${escapeHtml(formatValue(windowStats.max))} high</span>
+      <span>${escapeHtml(formatValue(windowStats.min))} low</span>
+      <span>${escapeHtml(formatValue(windowStats.last))} now ${escapeHtml(deltaLabel)}</span>
+    </p>
   `;
   return true;
 }
 
 function renderTrends(entriesNewestFirst) {
-  const { mpg, miles, price } = collectTrendSeries(entriesNewestFirst);
-  const mpgOk = renderLineChart(chartMpgBodyEl, chartMpgAvgEl, {
-    values: mpg,
-    formatValue: (n) => n.toFixed(1),
-    unitLabel: 'mpg',
-    ariaName: 'MPG',
-  });
-  const priceOk = renderLineChart(chartPriceBodyEl, chartPriceAvgEl, {
-    values: price,
-    formatValue: (n) => `${fmtPricePerGallon(n)}/gal`,
+  const { spend, miles, mpg, price } = collectTrendSeries(entriesNewestFirst);
+
+  // Same order as log summaries: spend · miles · mpg · $/gal
+  const spendOk = renderLineChart(chartSpendBodyEl, chartSpendAvgEl, {
+    points: spend,
+    formatValue: (n) => fmtMoney(n),
     unitLabel: '',
-    stroke: 'rgba(110, 180, 255, 0.9)',
-    fill: '#6eb4ff',
-    ariaName: 'Price per gallon',
+    stroke: 'rgba(255, 180, 70, 0.95)',
+    fill: '#ffb446',
+    ariaName: 'Spend per fill-up',
   });
   const milesOk = renderLineChart(chartMilesBodyEl, chartMilesAvgEl, {
-    values: miles,
+    points: miles,
     formatValue: (n) => Math.round(n).toLocaleString(),
     unitLabel: 'mi',
     stroke: 'rgba(120, 210, 160, 0.95)',
     fill: '#78d2a0',
     ariaName: 'Miles between fill-ups',
   });
+  const mpgOk = renderLineChart(chartMpgBodyEl, chartMpgAvgEl, {
+    points: mpg,
+    formatValue: (n) => n.toFixed(1),
+    unitLabel: 'mpg',
+    ariaName: 'MPG',
+  });
+  const priceOk = renderLineChart(chartPriceBodyEl, chartPriceAvgEl, {
+    points: price,
+    formatValue: (n) => `${fmtPricePerGallon(n)}/gal`,
+    unitLabel: '',
+    stroke: 'rgba(110, 180, 255, 0.9)',
+    fill: '#6eb4ff',
+    ariaName: 'Price per gallon',
+  });
 
+  chartSpendEl.hidden = !spendOk;
+  chartMilesEl.hidden = !milesOk;
   chartMpgEl.hidden = !mpgOk;
   chartPriceEl.hidden = !priceOk;
-  chartMilesEl.hidden = !milesOk;
 
-  const any = mpgOk || priceOk || milesOk;
+  const any = spendOk || milesOk || mpgOk || priceOk;
   trendsContent.hidden = !any;
   trendsEmpty.hidden = any;
 }
