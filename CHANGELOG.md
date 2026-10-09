@@ -4,6 +4,22 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
+## [1.15.0] - 2026-10-09
+
+### Features
+
+- Spend chart, aligned Trends order, tighter stats and date axis
+- Monthly Trends charts, fill-ups series, preview version label
+- Month-only chart labels, year when needed, preview build ids
+
+### Bug Fixes
+
+- Stop repeating /gal on every price chart chip
+
+### Chores
+
+- Bust asset cache for Trends chart updates
+- Cache-bust app.js after price chip tweak
 ## [1.14.0] - 2026-10-08
 
 ### Features
