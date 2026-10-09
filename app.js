@@ -1748,22 +1748,18 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.15.0';
 // Short build id while iterating on a PR — bump + mention in chat each push so
 // the footer can be matched to the update. Cleared to '' before tagging a
 // production release. Never shown on the live Pages host even if forgotten.
-const PREVIEW_BUILD = 'm3';
+const PREVIEW_BUILD = '';
 const PRODUCTION_HOST = 'jr00ck.github.io';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'All-time stats at the top of the log — fill-ups, spend, miles, avg MPG, and avg $/gal',
-  'Month summaries also show average MPG',
-  'Trends page with MPG, miles, and price charts (high / low / avg context)',
-  'Simple Log / Trends tabs at the bottom',
-  'One-shot auto location when you start a new fill-up — not on app open, not on every blur',
-  'Cleaner Locating UX: status line + pulsing pin (no duplicate text in the field)',
-  'Mileage “full tank” warning respects your longest past fill-up interval',
+  'Trends are monthly now — fill-ups, spend, miles, MPG, and $/gal match the log summaries',
+  'Compact chart stats: high · low · now · ↑/↓ change',
+  'Month labels on charts; short year appears only when the window spans years',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
