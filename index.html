@@ -139,9 +139,17 @@
   </section>
 
   <section id="page-trends" class="page" hidden aria-label="Trends">
-    <p id="trends-empty" class="hint trends-empty">Add a few fill-ups to see spend, miles, MPG, and price trends.</p>
+    <p id="trends-empty" class="hint trends-empty">Add fill-ups in more than one month to see monthly trends.</p>
     <div id="trends-content" class="trends-content" hidden>
-      <!-- Order matches log summary: spend · miles · mpg · $/gal -->
+      <!-- Order matches log summary: fill-ups · spend · miles · mpg · $/gal -->
+      <article id="chart-fills" class="trend-chart" hidden aria-labelledby="chart-fills-heading">
+        <div class="trend-chart-head">
+          <h2 id="chart-fills-heading">Fill-ups</h2>
+          <p id="chart-fills-avg" class="trend-chart-avg"></p>
+        </div>
+        <div id="chart-fills-body" class="trend-chart-body" role="img"></div>
+      </article>
+
       <article id="chart-spend" class="trend-chart" hidden aria-labelledby="chart-spend-heading">
         <div class="trend-chart-head">
           <h2 id="chart-spend-heading">Spend</h2>
@@ -188,6 +196,6 @@
 
 </div>
 
-<script src="app.js?v=1.14.0.1"></script>
+<script src="app.js?v=1.14.0.2"></script>
 </body>
 </html>

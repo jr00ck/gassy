@@ -764,16 +764,9 @@ input[readonly] {
 
 .trend-chart-meta {
   margin: 8px 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
   font-size: 0.72rem;
   color: var(--text-dim);
   line-height: 1.35;
-}
-
-.trend-chart-meta span {
-  white-space: nowrap;
 }
 
 .entry-chevron {

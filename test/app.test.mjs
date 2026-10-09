@@ -46,7 +46,7 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
 test('boots without errors and shows v1.14.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.14.0');
+  assert.match(d.getElementById('app-version').textContent, /^v1\.14\.0/);
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -157,19 +157,12 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
-  assert.equal(d.getElementById('chart-spend').hidden, false);
-  assert.ok(d.querySelector('#chart-spend-body svg'));
-  assert.equal(d.getElementById('chart-miles').hidden, false);
-  assert.ok(d.querySelector('#chart-miles-body svg'));
-  assert.equal(d.getElementById('chart-mpg').hidden, false);
-  assert.match(d.getElementById('chart-mpg-avg').textContent, /mpg/i);
-  assert.ok(d.querySelector('#chart-mpg-body svg'));
-  assert.match(d.getElementById('chart-mpg-body').textContent, /high/i);
-  assert.match(d.getElementById('chart-mpg-body').textContent, /low/i);
-  assert.match(d.getElementById('chart-mpg-body').textContent, /now/i);
-  assert.ok(d.querySelector('#chart-mpg-body .trend-chart-x'));
-  assert.equal(d.getElementById('chart-price').hidden, false);
-  assert.ok(d.querySelector('#chart-price-body svg'));
+  // All three fills are in the same month — monthly charts need 2+ months.
+  assert.equal(d.getElementById('chart-fills').hidden, true);
+  assert.equal(d.getElementById('chart-spend').hidden, true);
+  assert.equal(d.getElementById('chart-miles').hidden, true);
+  assert.equal(d.getElementById('chart-mpg').hidden, true);
+  assert.equal(d.getElementById('chart-price').hidden, true);
   assert.match(d.getElementById('log-meta-summary').textContent, /3 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
@@ -340,9 +333,31 @@ test('auto-locates once when starting a new fill-up, not again on later blurs', 
   assert.equal(gpsCalled, 2);
 });
 
-test('Trends charts follow log summary order: spend, miles, mpg, price', () => {
-  const order = [...html.matchAll(/id="(chart-(?:spend|miles|mpg|price))"/g)].map((m) => m[1]);
-  assert.deepEqual(order, ['chart-spend', 'chart-miles', 'chart-mpg', 'chart-price']);
+test('Trends charts follow log summary order: fills, spend, miles, mpg, price', () => {
+  const order = [...html.matchAll(/id="(chart-(?:fills|spend|miles|mpg|price))"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['chart-fills', 'chart-spend', 'chart-miles', 'chart-mpg', 'chart-price']);
+});
+
+test('monthly Trends charts render with middots and change label', () => {
+  const seed = [
+    { id: 'm1', datetime: '2026-08-10T12:00', mileage: 30000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'm2', datetime: '2026-09-10T12:00', mileage: 30300, pricePerGallon: 3.599, totalCost: 42, location: '', lat: null, lon: null, source: null },
+    { id: 'm3', datetime: '2026-10-10T12:00', mileage: 30700, pricePerGallon: 3.699, totalCost: 45, location: '', lat: null, lon: null, source: null },
+  ];
+  const { d } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
+  });
+
+  assert.equal(d.getElementById('chart-fills').hidden, false);
+  assert.equal(d.getElementById('chart-spend').hidden, false);
+  assert.equal(d.getElementById('chart-miles').hidden, false);
+  assert.equal(d.getElementById('chart-mpg').hidden, false);
+  assert.equal(d.getElementById('chart-price').hidden, false);
+
+  const meta = d.getElementById('chart-spend-body').querySelector('.trend-chart-meta').textContent;
+  assert.match(meta, /high · .* low · .* now · .* change/);
+  assert.ok(d.querySelector('#chart-fills-body .trend-chart-x'));
+  assert.match(d.getElementById('app-version').textContent, /preview/);
 });
 
 test('mileage upper bound allows historically normal fill-up intervals', () => {
