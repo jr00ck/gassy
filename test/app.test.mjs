@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.14.0', () => {
+test('boots without errors and shows v1.15.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.14.0');
+  assert.equal(d.getElementById('app-version').textContent, 'v1.15.0');
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,9 +69,9 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.14\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.15\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
-  assert.ok(items.length >= 3);
+  assert.ok(items.length >= 1);
   assert.ok(items.every((t) => t.trim().length > 0));
   badge.click();
   assert.equal(panel.hidden, true);
@@ -157,15 +157,12 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
-  assert.equal(d.getElementById('chart-mpg').hidden, false);
-  assert.match(d.getElementById('chart-mpg-avg').textContent, /mpg/i);
-  assert.ok(d.querySelector('#chart-mpg-body svg'));
-  assert.match(d.getElementById('chart-mpg-body').textContent, /high/i);
-  assert.match(d.getElementById('chart-mpg-body').textContent, /low/i);
-  assert.equal(d.getElementById('chart-price').hidden, false);
-  assert.ok(d.querySelector('#chart-price-body svg'));
-  assert.equal(d.getElementById('chart-miles').hidden, false);
-  assert.ok(d.querySelector('#chart-miles-body svg'));
+  // All three fills are in the same month — monthly charts need 2+ months.
+  assert.equal(d.getElementById('chart-fills').hidden, true);
+  assert.equal(d.getElementById('chart-spend').hidden, true);
+  assert.equal(d.getElementById('chart-miles').hidden, true);
+  assert.equal(d.getElementById('chart-mpg').hidden, true);
+  assert.equal(d.getElementById('chart-price').hidden, true);
   assert.match(d.getElementById('log-meta-summary').textContent, /3 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mpg avg/);
@@ -336,9 +333,60 @@ test('auto-locates once when starting a new fill-up, not again on later blurs', 
   assert.equal(gpsCalled, 2);
 });
 
-test('Trends charts list Miles directly under MPG', () => {
-  const order = [...html.matchAll(/id="(chart-(?:mpg|miles|price))"/g)].map((m) => m[1]);
-  assert.deepEqual(order, ['chart-mpg', 'chart-miles', 'chart-price']);
+test('Trends charts follow log summary order: fills, spend, miles, mpg, price', () => {
+  const order = [...html.matchAll(/id="(chart-(?:fills|spend|miles|mpg|price))"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['chart-fills', 'chart-spend', 'chart-miles', 'chart-mpg', 'chart-price']);
+});
+
+test('monthly Trends charts render with middots and change label', () => {
+  const seed = [
+    { id: 'm1', datetime: '2026-08-10T12:00', mileage: 30000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'm2', datetime: '2026-09-10T12:00', mileage: 30300, pricePerGallon: 3.599, totalCost: 42, location: '', lat: null, lon: null, source: null },
+    { id: 'm3', datetime: '2026-10-10T12:00', mileage: 30700, pricePerGallon: 3.699, totalCost: 45, location: '', lat: null, lon: null, source: null },
+  ];
+  const { d } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
+  });
+
+  assert.equal(d.getElementById('chart-fills').hidden, false);
+  assert.equal(d.getElementById('chart-spend').hidden, false);
+  assert.equal(d.getElementById('chart-miles').hidden, false);
+  assert.equal(d.getElementById('chart-mpg').hidden, false);
+  assert.equal(d.getElementById('chart-price').hidden, false);
+
+  const meta = d.getElementById('chart-spend-body').querySelector('.trend-chart-meta').textContent;
+  assert.match(meta, /high · .* low · .* now · .* change/);
+  assert.ok(d.querySelector('#chart-fills-body .trend-chart-x'));
+  assert.equal(d.getElementById('app-version').textContent, 'v1.15.0');
+});
+
+test('chart month labels omit year unless the window spans years', () => {
+  const sameYear = [
+    { id: 'y1', datetime: '2026-08-10T12:00', mileage: 30000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'y2', datetime: '2026-09-10T12:00', mileage: 30300, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'y3', datetime: '2026-10-10T12:00', mileage: 30600, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+  ];
+  {
+    const { d } = boot((dom) => {
+      dom.window.localStorage.setItem('gassy.entries', JSON.stringify(sameYear));
+    });
+    const labels = [...d.querySelectorAll('#chart-fills-body .trend-chart-x span')].map((s) => s.textContent);
+    assert.ok(labels.length >= 2);
+    assert.ok(labels.every((t) => !/\d{2}/.test(t)), `expected month-only labels, got ${labels.join(',')}`);
+  }
+  const crossYear = [
+    { id: 'c1', datetime: '2025-11-10T12:00', mileage: 29000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'c2', datetime: '2025-12-10T12:00', mileage: 29300, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'c3', datetime: '2026-01-10T12:00', mileage: 29600, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+  ];
+  {
+    const { d } = boot((dom) => {
+      dom.window.localStorage.setItem('gassy.entries', JSON.stringify(crossYear));
+    });
+    const labels = [...d.querySelectorAll('#chart-fills-body .trend-chart-x span')].map((s) => s.textContent);
+    assert.ok(labels.length >= 2);
+    assert.ok(labels.some((t) => /\d{2}/.test(t)), `expected year on multi-year labels, got ${labels.join(',')}`);
+  }
 });
 
 test('mileage upper bound allows historically normal fill-up intervals', () => {

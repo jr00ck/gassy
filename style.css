@@ -734,11 +734,39 @@ input[readonly] {
   height: 88px;
 }
 
+.trend-chart-x {
+  position: relative;
+  height: 1.1em;
+  margin-top: 6px;
+}
+
+.trend-chart-x span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.trend-chart-x span:first-child {
+  transform: translateX(0);
+}
+
+.trend-chart-x span:last-child {
+  transform: translateX(-100%);
+}
+
+.trend-chart-x span:first-child:last-child {
+  transform: translateX(-50%);
+}
+
 .trend-chart-meta {
   margin: 8px 0 0;
   font-size: 0.72rem;
   color: var(--text-dim);
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .entry-chevron {
