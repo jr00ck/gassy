@@ -1091,8 +1091,8 @@ function renderTrends(entriesNewestFirst) {
   });
   const priceOk = renderLineChart(chartPriceBodyEl, chartPriceAvgEl, {
     points: price,
-    formatValue: (n) => `${fmtPricePerGallon(n)}/gal`,
-    unitLabel: '',
+    formatValue: (n) => fmtPricePerGallon(n),
+    unitLabel: '/gal',
     stroke: 'rgba(110, 180, 255, 0.9)',
     fill: '#6eb4ff',
     ariaName: 'Price per gallon',
