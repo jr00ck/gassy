@@ -357,7 +357,36 @@ test('monthly Trends charts render with middots and change label', () => {
   const meta = d.getElementById('chart-spend-body').querySelector('.trend-chart-meta').textContent;
   assert.match(meta, /high · .* low · .* now · .* change/);
   assert.ok(d.querySelector('#chart-fills-body .trend-chart-x'));
-  assert.match(d.getElementById('app-version').textContent, /preview/);
+  assert.match(d.getElementById('app-version').textContent, /m3/);
+});
+
+test('chart month labels omit year unless the window spans years', () => {
+  const sameYear = [
+    { id: 'y1', datetime: '2026-08-10T12:00', mileage: 30000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'y2', datetime: '2026-09-10T12:00', mileage: 30300, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'y3', datetime: '2026-10-10T12:00', mileage: 30600, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+  ];
+  {
+    const { d } = boot((dom) => {
+      dom.window.localStorage.setItem('gassy.entries', JSON.stringify(sameYear));
+    });
+    const labels = [...d.querySelectorAll('#chart-fills-body .trend-chart-x span')].map((s) => s.textContent);
+    assert.ok(labels.length >= 2);
+    assert.ok(labels.every((t) => !/\d{2}/.test(t)), `expected month-only labels, got ${labels.join(',')}`);
+  }
+  const crossYear = [
+    { id: 'c1', datetime: '2025-11-10T12:00', mileage: 29000, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'c2', datetime: '2025-12-10T12:00', mileage: 29300, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+    { id: 'c3', datetime: '2026-01-10T12:00', mileage: 29600, pricePerGallon: 3.499, totalCost: 40, location: '', lat: null, lon: null, source: null },
+  ];
+  {
+    const { d } = boot((dom) => {
+      dom.window.localStorage.setItem('gassy.entries', JSON.stringify(crossYear));
+    });
+    const labels = [...d.querySelectorAll('#chart-fills-body .trend-chart-x span')].map((s) => s.textContent);
+    assert.ok(labels.length >= 2);
+    assert.ok(labels.some((t) => /\d{2}/.test(t)), `expected year on multi-year labels, got ${labels.join(',')}`);
+  }
 });
 
 test('mileage upper bound allows historically normal fill-up intervals', () => {

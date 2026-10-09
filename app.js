@@ -923,8 +923,7 @@ function collectMonthlyTrendSeries(entriesNewestFirst) {
 
   for (const group of monthsOldestFirst) {
     const summary = summarizeEntries(group.entries);
-    const label = fmtChartMonth(group.key);
-    const point = (value) => ({ value, label, monthKey: group.key });
+    const point = (value) => ({ value, monthKey: group.key });
 
     fills.push(point(summary.count));
     spend.push(point(summary.spend));
@@ -950,14 +949,26 @@ function seriesStats(points) {
   };
 }
 
-function fmtChartMonth(monthKey) {
+function monthKeyYear(monthKey) {
+  const year = Number(String(monthKey).slice(0, 4));
+  return Number.isFinite(year) ? year : null;
+}
+
+function seriesSpansYears(points) {
+  const years = new Set(points.map((p) => monthKeyYear(p.monthKey)).filter((y) => y != null));
+  return years.size > 1;
+}
+
+// Month-only by default; include a short year when the series crosses years.
+function fmtChartMonth(monthKey, { includeYear = false } = {}) {
   if (monthKey === 'unknown') return 'Unknown';
   const [year, month] = monthKey.split('-').map(Number);
   if (!year || !month) return monthKey;
-  return new Date(year, month - 1, 1).toLocaleString(undefined, {
-    month: 'short',
-    year: '2-digit',
-  });
+  const d = new Date(year, month - 1, 1);
+  if (includeYear) {
+    return d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
+  }
+  return d.toLocaleString(undefined, { month: 'short' });
 }
 
 // Up to 4 ticks: always ends, plus evenly spaced middles when needed.
@@ -995,6 +1006,7 @@ function renderLineChart(bodyEl, avgEl, {
   const windowStats = seriesStats(recent);
   const delta = windowStats.last - windowStats.first;
   const deltaLabel = formatTrendDelta(delta, formatValue, windowStats.avg);
+  const includeYear = seriesSpansYears(recent);
 
   avgEl.textContent = unitLabel
     ? `Avg ${formatValue(all.avg)} ${unitLabel}`
@@ -1010,7 +1022,12 @@ function renderLineChart(bodyEl, avgEl, {
   const coords = recent.map((point, i) => {
     const x = recent.length === 1 ? width / 2 : (i / (recent.length - 1)) * width;
     const y = height - padY - ((point.value - min) / range) * (height - padY * 2);
-    return { x, y, value: point.value, label: point.label };
+    return {
+      x,
+      y,
+      value: point.value,
+      label: fmtChartMonth(point.monthKey, { includeYear }),
+    };
   });
   const pointsAttr = coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const last = coords[coords.length - 1];
@@ -1021,7 +1038,7 @@ function renderLineChart(bodyEl, avgEl, {
 
   const xLabels = xAxisLabelIndexes(recent.length).map((i) => {
     const pct = recent.length === 1 ? 50 : (i / (recent.length - 1)) * 100;
-    return `<span style="left:${pct.toFixed(2)}%">${escapeHtml(recent[i].label)}</span>`;
+    return `<span style="left:${pct.toFixed(2)}%">${escapeHtml(coords[i].label)}</span>`;
   }).join('');
 
   const metaText = [
@@ -1732,9 +1749,10 @@ render();
 // --- Version badge: shows briefly after an update was just applied ---
 
 const APP_VERSION = '1.14.0';
-// Non-empty while iterating on a PR / RC. Cleared to '' before tagging a
+// Short build id while iterating on a PR — bump + mention in chat each push so
+// the footer can be matched to the update. Cleared to '' before tagging a
 // production release. Never shown on the live Pages host even if forgotten.
-const PREVIEW_LABEL = 'preview';
+const PREVIEW_BUILD = 'm3';
 const PRODUCTION_HOST = 'jr00ck.github.io';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
@@ -1751,7 +1769,7 @@ const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
 function versionLabel() {
   const onProd = location.hostname === PRODUCTION_HOST;
-  if (!onProd && PREVIEW_LABEL) return `v${APP_VERSION} · ${PREVIEW_LABEL}`;
+  if (!onProd && PREVIEW_BUILD) return `v${APP_VERSION} · ${PREVIEW_BUILD}`;
   return `v${APP_VERSION}`;
 }
 
