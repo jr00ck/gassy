@@ -4,7 +4,7 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
-## [unreleased]
+## [1.17.0] - 2026-10-10
 
 ### Features
 
