@@ -939,13 +939,13 @@ function createEntryElement(entry, { arrive = false } = {}) {
   return li;
 }
 
-// Keep chart point counts readable (~1–16). Prefer per-fill when sparse;
-// roll up to week → month → quarter → year as history grows.
+// Keep chart point counts readable (~1–16). Prefer week buckets (with empty
+// weeks as 0) so Fill-ups/Spend/Miles align; roll up to month → quarter → year.
 const MAX_CHART_POINTS = 16;
 
 function chooseTrendGrain(entriesOldestFirst) {
   const n = entriesOldestFirst.length;
-  if (n <= MAX_CHART_POINTS) return 'fill';
+  if (n < 1) return 'week';
 
   const t0 = new Date(entriesOldestFirst[0].datetime).getTime();
   const t1 = new Date(entriesOldestFirst[n - 1].datetime).getTime();
@@ -975,8 +975,26 @@ function isoWeekBucketKey(date) {
   return `${year}-W${String(week).padStart(2, '0')}`;
 }
 
+function mondayOfIsoWeekKey(bucketKey) {
+  const match = /^(\d{4})-W(\d{2})$/.exec(bucketKey);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  // ISO week 1 contains Jan 4; Monday is the start of that week.
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const day = jan4.getUTCDay() || 7;
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - (day - 1) + (week - 1) * 7);
+  return new Date(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate());
+}
+
+function addLocalDays(date, n) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
 function grainBucketKey(entry, grain) {
-  if (grain === 'fill') return entry.id;
   const d = new Date(entry.datetime);
   if (Number.isNaN(d.getTime())) return 'unknown';
   const year = d.getFullYear();
@@ -996,16 +1014,11 @@ function seriesSpansYears(entries) {
 }
 
 function fmtChartBucketLabel(grain, bucketKey, sampleEntry, { includeYear = false } = {}) {
-  if (grain === 'fill') {
-    const d = new Date(sampleEntry.datetime);
-    if (Number.isNaN(d.getTime())) return 'Unknown';
-    return d.toLocaleString(undefined, includeYear
-      ? { month: 'short', day: 'numeric', year: '2-digit' }
-      : { month: 'short', day: 'numeric' });
-  }
   if (bucketKey === 'unknown') return 'Unknown';
   if (grain === 'week') {
-    const d = new Date(sampleEntry.datetime);
+    const d = mondayOfIsoWeekKey(bucketKey)
+      || (sampleEntry ? new Date(sampleEntry.datetime) : null);
+    if (!d || Number.isNaN(d.getTime())) return bucketKey;
     return d.toLocaleString(undefined, includeYear
       ? { month: 'short', day: 'numeric', year: '2-digit' }
       : { month: 'short', day: 'numeric' });
@@ -1027,7 +1040,6 @@ function fmtChartBucketLabel(grain, bucketKey, sampleEntry, { includeYear = fals
 }
 
 const GRAIN_PERIOD_UNIT = {
-  fill: '/fill',
   week: '/wk',
   month: '/mo',
   quarter: '/qtr',
@@ -1035,28 +1047,59 @@ const GRAIN_PERIOD_UNIT = {
 };
 
 const GRAIN_ARIA = {
-  fill: 'fill-up',
   week: 'week',
   month: 'month',
   quarter: 'quarter',
   year: 'year',
 };
 
+/** Continuous ISO-week keys from first→last fill (includes empty weeks). */
+function weekKeysSpanning(entriesOldestFirst) {
+  if (!entriesOldestFirst.length) return [];
+  const first = new Date(entriesOldestFirst[0].datetime);
+  const last = new Date(entriesOldestFirst[entriesOldestFirst.length - 1].datetime);
+  if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return [];
+  const keys = [];
+  // Walk Mondays via local dates but key with the same ISO helper as grainBucketKey.
+  let cursor = mondayOfIsoWeekKey(isoWeekBucketKey(first));
+  const endKey = isoWeekBucketKey(last);
+  if (!cursor) return [];
+  // Safety cap well above MAX_CHART_POINTS.
+  for (let i = 0; i < 400; i += 1) {
+    const key = isoWeekBucketKey(cursor);
+    keys.push(key);
+    if (key === endKey) break;
+    cursor = addLocalDays(cursor, 7);
+  }
+  return keys;
+}
+
 // Adaptive series matching log summary metrics, oldest → newest.
 function collectTrendSeries(entriesNewestFirst) {
   const oldestFirst = [...entriesNewestFirst].reverse();
+  if (!oldestFirst.length) {
+    return { fills: [], spend: [], miles: [], mpg: [], price: [], grain: 'week' };
+  }
   const grain = chooseTrendGrain(oldestFirst);
   const includeYear = seriesSpansYears(oldestFirst);
 
-  const bucketOrder = [];
   const buckets = new Map();
   for (const entry of oldestFirst) {
     const key = grainBucketKey(entry, grain);
-    if (!buckets.has(key)) {
-      buckets.set(key, []);
-      bucketOrder.push(key);
-    }
+    if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(entry);
+  }
+
+  // Weeks: fill empty calendar weeks with []. Other grains: occupied buckets only.
+  let bucketOrder;
+  if (grain === 'week') {
+    bucketOrder = weekKeysSpanning(oldestFirst);
+  } else {
+    bucketOrder = [];
+    for (const entry of oldestFirst) {
+      const key = grainBucketKey(entry, grain);
+      if (!bucketOrder.includes(key)) bucketOrder.push(key);
+    }
   }
 
   const keys = bucketOrder.slice(-MAX_CHART_POINTS);
@@ -1067,15 +1110,17 @@ function collectTrendSeries(entriesNewestFirst) {
   const price = [];
 
   for (const key of keys) {
-    const groupEntries = buckets.get(key);
-    const summary = summarizeEntries(groupEntries);
+    const groupEntries = buckets.get(key) || [];
+    const summary = groupEntries.length
+      ? summarizeEntries(groupEntries)
+      : { count: 0, spend: 0, miles: 0, avgMpg: null, avgPpg: null };
     const label = fmtChartBucketLabel(grain, key, groupEntries[0], { includeYear });
     const point = (value) => ({ value, bucketKey: key, label });
 
-    // Per-fill "count" is always 1 — skip that chart; use buckets for counts.
-    if (grain !== 'fill') fills.push(point(summary.count));
+    fills.push(point(summary.count));
     spend.push(point(summary.spend));
-    if (summary.miles > 0) miles.push(point(summary.miles));
+    miles.push(point(summary.miles));
+    // Rates omit empty buckets — no MPG/$/gal without a fill.
     if (summary.avgMpg != null) mpg.push(point(summary.avgMpg));
     if (summary.avgPpg != null) price.push(point(summary.avgPpg));
   }
@@ -1109,11 +1154,34 @@ function xAxisLabelIndexes(count) {
 function formatTrendDelta(delta, formatValue, avg) {
   const abs = Math.abs(delta);
   const threshold = Math.abs(avg) * 0.02 || 0.05;
-  if (abs < threshold) return '→';
-  return `${delta > 0 ? '↑' : '↓'}${formatValue(abs)}`;
+  if (abs < threshold) return { text: '→', kind: 'flat' };
+  return {
+    text: `${delta > 0 ? '↑' : '↓'}${formatValue(abs)}`,
+    kind: delta > 0 ? 'up' : 'down',
+  };
 }
 
-function renderLineChart(bodyEl, avgEl, {
+function trendMetaChip(valueText, label, { kind = '' } = {}) {
+  const kindClass = kind ? ` trend-chip-${kind}` : '';
+  return (
+    `<span class="trend-chip${kindClass}">` +
+      `<span class="trend-chip-value">${escapeHtml(valueText)}</span>` +
+      `<span class="trend-chip-label">${escapeHtml(label)}</span>` +
+    `</span>`
+  );
+}
+
+function trendChartY(value, min, max, height, padY) {
+  const range = max - min || 1;
+  return height - padY - ((value - min) / range) * (height - padY * 2);
+}
+
+function trendChartX(i, count, width) {
+  return count === 1 ? width / 2 : (i / (count - 1)) * width;
+}
+
+/** Hybrid B marks: columns (zero-based counts/sums) or dotsLine (rates). */
+function renderTrendChart(bodyEl, avgEl, {
   points,
   formatValue,
   unitLabel,
@@ -1121,6 +1189,7 @@ function renderLineChart(bodyEl, avgEl, {
   fill = '#ff6b35',
   ariaName,
   grain = 'month',
+  mark = 'dotsLine',
 }) {
   if (!points || points.length < 1) {
     bodyEl.innerHTML = '';
@@ -1132,8 +1201,9 @@ function renderLineChart(bodyEl, avgEl, {
   const all = seriesStats(points);
   const windowStats = seriesStats(recent);
   const delta = windowStats.last - windowStats.first;
-  const deltaLabel = formatTrendDelta(delta, formatValue, windowStats.avg);
+  const deltaInfo = formatTrendDelta(delta, formatValue, windowStats.avg);
   const grainWord = GRAIN_ARIA[grain] || 'period';
+  const useColumns = mark === 'columns';
 
   avgEl.textContent = unitLabel
     ? `Avg ${formatValue(all.avg)} ${unitLabel}`
@@ -1142,41 +1212,64 @@ function renderLineChart(bodyEl, avgEl, {
   const width = 280;
   const height = 88;
   const padY = 8;
-  const min = windowStats.min;
-  const max = windowStats.max;
-  const range = max - min || 1;
-  const avgY = height - padY - ((windowStats.avg - min) / range) * (height - padY * 2);
-  const coords = recent.map((point, i) => {
-    const x = recent.length === 1 ? width / 2 : (i / (recent.length - 1)) * width;
-    const y = height - padY - ((point.value - min) / range) * (height - padY * 2);
-    return {
-      x,
-      y,
-      value: point.value,
-      label: point.label,
-    };
-  });
-  const pointsAttr = coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const last = coords[coords.length - 1];
-  const highIdx = recent.findIndex((p) => p.value === windowStats.max);
-  const lowIdx = recent.findIndex((p) => p.value === windowStats.min);
-  const high = coords[highIdx];
-  const low = coords[lowIdx];
-  const showLine = coords.length >= 2;
+  // Columns: zero baseline. Rates: zoom to the data range.
+  const min = useColumns ? 0 : windowStats.min;
+  const max = useColumns ? Math.max(windowStats.max, 1) : windowStats.max;
+  const avgY = trendChartY(windowStats.avg, min, max, height, padY);
+
+  let svgMarks = '';
+  if (useColumns) {
+    const n = recent.length;
+    const slot = width / n;
+    const gap = 0.22;
+    const barW = Math.max(2, slot * (1 - gap));
+    svgMarks = recent.map((point, i) => {
+      const x = i * slot + (slot - barW) / 2;
+      const y = trendChartY(point.value, min, max, height, padY);
+      const h = point.value === 0 ? 0 : Math.max(1.5, height - padY - y);
+      const opacity = point.value === 0 ? 0.22 : 0.9;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
+        rx="2" fill="${fill}" opacity="${opacity}" />`;
+    }).join('');
+  } else {
+    const coords = recent.map((point, i) => ({
+      x: trendChartX(i, recent.length, width),
+      y: trendChartY(point.value, min, max, height, padY),
+    }));
+    const pointsAttr = coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const showLine = coords.length >= 2;
+    const dots = coords.map((c, i) => {
+      const isLast = i === coords.length - 1;
+      return `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${isLast ? 3.5 : 2.8}"
+        fill="${fill}" opacity="${isLast ? 1 : 0.85}" />`;
+    }).join('');
+    svgMarks = `
+      ${showLine ? `<polyline
+        fill="none"
+        stroke="${stroke}"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        points="${pointsAttr}"
+        opacity="0.85"
+      />` : ''}
+      ${dots}
+    `;
+  }
 
   const xLabels = xAxisLabelIndexes(recent.length).map((i) => {
     const pct = recent.length === 1 ? 50 : (i / (recent.length - 1)) * 100;
-    return `<span style="left:${pct.toFixed(2)}%">${escapeHtml(coords[i].label)}</span>`;
+    return `<span style="left:${pct.toFixed(2)}%">${escapeHtml(recent[i].label)}</span>`;
   }).join('');
 
-  const metaText = coords.length === 1
-    ? `${formatValue(windowStats.last)} now`
+  const metaHtml = recent.length === 1
+    ? trendMetaChip(formatValue(windowStats.last), 'now', { kind: 'now' })
     : [
-      `${formatValue(windowStats.max)} high`,
-      `${formatValue(windowStats.min)} low`,
-      `${formatValue(windowStats.last)} now`,
-      `${deltaLabel} change`,
-    ].join(' · ');
+      trendMetaChip(formatValue(windowStats.max), 'high', { kind: 'high' }),
+      trendMetaChip(formatValue(windowStats.min), 'low', { kind: 'low' }),
+      trendMetaChip(formatValue(windowStats.last), 'now', { kind: 'now' }),
+      trendMetaChip(deltaInfo.text, 'change', { kind: deltaInfo.kind }),
+    ].join('');
 
   bodyEl.setAttribute(
     'aria-label',
@@ -1193,22 +1286,12 @@ function renderLineChart(bodyEl, avgEl, {
         <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <line x1="0" y1="${avgY.toFixed(1)}" x2="${width}" y2="${avgY.toFixed(1)}"
             stroke="rgba(154, 160, 172, 0.35)" stroke-width="1" stroke-dasharray="4 4" />
-          ${showLine ? `<polyline
-            fill="none"
-            stroke="${stroke}"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            points="${pointsAttr}"
-          />` : ''}
-          ${showLine ? `<circle cx="${high.x.toFixed(1)}" cy="${high.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />
-          <circle cx="${low.x.toFixed(1)}" cy="${low.y.toFixed(1)}" r="3" fill="${fill}" opacity="0.55" />` : ''}
-          <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.5" fill="${fill}" />
+          ${svgMarks}
         </svg>
         <div class="trend-chart-x" aria-hidden="true">${xLabels}</div>
       </div>
     </div>
-    <p class="trend-chart-meta">${escapeHtml(metaText)}</p>
+    <p class="trend-chart-meta">${metaHtml}</p>
   `;
   return true;
 }
@@ -1217,8 +1300,8 @@ function renderTrends(entriesNewestFirst) {
   const { fills, spend, miles, mpg, price, grain } = collectTrendSeries(entriesNewestFirst);
   const period = GRAIN_PERIOD_UNIT[grain] || '/mo';
 
-  // Same order as log summaries: fill-ups · spend · miles · mpg · $/gal
-  const fillsOk = renderLineChart(chartFillsBodyEl, chartFillsAvgEl, {
+  // Hybrid B: columns for counts/sums; dots+line for rates.
+  const fillsOk = renderTrendChart(chartFillsBodyEl, chartFillsAvgEl, {
     points: fills,
     formatValue: (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1)),
     unitLabel: period,
@@ -1226,8 +1309,9 @@ function renderTrends(entriesNewestFirst) {
     fill: '#c8a0ff',
     ariaName: 'Fill-ups',
     grain,
+    mark: 'columns',
   });
-  const spendOk = renderLineChart(chartSpendBodyEl, chartSpendAvgEl, {
+  const spendOk = renderTrendChart(chartSpendBodyEl, chartSpendAvgEl, {
     points: spend,
     formatValue: (n) => fmtMoney(n),
     unitLabel: period,
@@ -1235,8 +1319,10 @@ function renderTrends(entriesNewestFirst) {
     fill: '#ffb446',
     ariaName: 'Spend',
     grain,
+    mark: 'columns',
   });
-  const milesOk = renderLineChart(chartMilesBodyEl, chartMilesAvgEl, {
+  const milesHasDrive = miles.some((p) => p.value > 0);
+  const milesOk = milesHasDrive && renderTrendChart(chartMilesBodyEl, chartMilesAvgEl, {
     points: miles,
     formatValue: (n) => Math.round(n).toLocaleString(),
     unitLabel: `mi${period}`,
@@ -1244,15 +1330,17 @@ function renderTrends(entriesNewestFirst) {
     fill: '#78d2a0',
     ariaName: 'Miles',
     grain,
+    mark: 'columns',
   });
-  const mpgOk = renderLineChart(chartMpgBodyEl, chartMpgAvgEl, {
+  const mpgOk = renderTrendChart(chartMpgBodyEl, chartMpgAvgEl, {
     points: mpg,
     formatValue: (n) => n.toFixed(1),
     unitLabel: 'mpg',
     ariaName: 'Average MPG',
     grain,
+    mark: 'dotsLine',
   });
-  const priceOk = renderLineChart(chartPriceBodyEl, chartPriceAvgEl, {
+  const priceOk = renderTrendChart(chartPriceBodyEl, chartPriceAvgEl, {
     points: price,
     formatValue: (n) => fmtPricePerGallon(n),
     unitLabel: '/gal',
@@ -1260,6 +1348,7 @@ function renderTrends(entriesNewestFirst) {
     fill: '#6eb4ff',
     ariaName: 'Average price per gallon',
     grain,
+    mark: 'dotsLine',
   });
 
   chartFillsEl.hidden = !fillsOk;
@@ -1887,7 +1976,7 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.17.0';
 // Short build id while iterating on a PR — bump + mention in chat each push so
 // the footer can be matched to the update. Cleared to '' before tagging a
 // production release. Never shown on the live Pages host even if forgotten.
@@ -1896,9 +1985,8 @@ const PRODUCTION_HOST = 'jr00ck.github.io';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Log summaries put fill-up count on the title row with compact tinted stats underneath',
-  'Trends adapt the time grain (fill → week → month → quarter → year) so charts stay readable',
-  'Single fill-ups can show as a single chart dot; denser history rolls up automatically',
+  'Trends use columns for fill-ups, spend, and miles; dots+line for MPG and $/gal',
+  'Week buckets (empty weeks as 0) unlock Fill-ups earlier; denser history rolls to months',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 

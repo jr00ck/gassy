@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.16.0', () => {
+test('boots without errors and shows v1.17.0', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.16.0');
+  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.0/);
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,7 +69,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.16\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.17\.0/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 1);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -132,7 +132,7 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   assert.ok(d.querySelector('.month-toggle'));
   assert.equal(d.getElementById('export-btn').disabled, false);
   assert.match(d.getElementById('mileage').placeholder, /^≈/);
-  // Sparse history uses per-fill points — one MPG sample is a single dot.
+  // Week buckets: MPG shows once an interval exists.
   assert.equal(d.getElementById('chart-mpg').hidden, false);
   assert.match(d.getElementById('log-meta-count').textContent, /2 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /\$/);
@@ -158,12 +158,15 @@ test('currency entry, MPG, predictions, and CSV export', async () => {
   });
   d.getElementById('submit-btn').click();
   assert.equal(d.getElementById('photo-status').hidden, true);
-  // Same-month history uses per-fill points (fill-ups chart stays bucket-only).
-  assert.equal(d.getElementById('chart-fills').hidden, true);
+  // Week buckets unlock Fill-ups early (columns for counts/sums).
+  assert.equal(d.getElementById('chart-fills').hidden, false);
   assert.equal(d.getElementById('chart-spend').hidden, false);
   assert.equal(d.getElementById('chart-miles').hidden, false);
   assert.equal(d.getElementById('chart-mpg').hidden, false);
   assert.equal(d.getElementById('chart-price').hidden, false);
+  assert.ok(d.querySelector('#chart-fills-body svg rect'));
+  assert.ok(d.querySelector('#chart-spend-body svg rect'));
+  assert.ok(d.querySelector('#chart-mpg-body svg circle'));
   assert.match(d.getElementById('log-meta-count').textContent, /3 fill-ups/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mi/);
   assert.match(d.getElementById('log-meta-summary').textContent, /mpg/);
@@ -350,17 +353,26 @@ test('Trends charts render with middots and change label', () => {
     dom.window.localStorage.setItem('gassy.entries', JSON.stringify(seed));
   });
 
-  // Few fills → per-fill grain (fill-ups chart is bucket-only).
-  assert.equal(d.getElementById('chart-fills').hidden, true);
+  // Sparse span → week grain; Fill-ups/Spend as columns, MPG/price as dots+line.
+  assert.equal(d.getElementById('chart-fills').hidden, false);
   assert.equal(d.getElementById('chart-spend').hidden, false);
   assert.equal(d.getElementById('chart-miles').hidden, false);
   assert.equal(d.getElementById('chart-mpg').hidden, false);
   assert.equal(d.getElementById('chart-price').hidden, false);
+  assert.ok(d.querySelectorAll('#chart-spend-body svg rect').length >= 1);
+  assert.equal(d.querySelectorAll('#chart-spend-body svg circle').length, 0);
+  assert.ok(d.querySelector('#chart-mpg-body svg polyline'));
+  assert.ok(d.querySelectorAll('#chart-mpg-body svg circle').length >= 2);
 
-  const meta = d.getElementById('chart-spend-body').querySelector('.trend-chart-meta').textContent;
-  assert.match(meta, /high · .* low · .* now · .* change/);
+  const meta = d.getElementById('chart-spend-body').querySelector('.trend-chart-meta');
+  assert.ok(meta.querySelector('.trend-chip-high'));
+  assert.ok(meta.querySelector('.trend-chip-now'));
+  assert.match(meta.textContent, /high/);
+  assert.match(meta.textContent, /low/);
+  assert.match(meta.textContent, /now/);
+  assert.match(meta.textContent, /change/);
   assert.ok(d.querySelector('#chart-spend-body .trend-chart-x'));
-  assert.equal(d.getElementById('app-version').textContent, 'v1.16.0');
+  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.0/);
 });
 
 test('chart date labels omit year unless the window spans years', () => {
@@ -421,9 +433,11 @@ test('dense history rolls charts up so point count stays capped', () => {
 
   assert.equal(d.getElementById('chart-fills').hidden, false);
   assert.equal(d.getElementById('chart-spend').hidden, false);
-  const dots = d.querySelectorAll('#chart-spend-body svg circle');
-  assert.ok(dots.length >= 1);
-  assert.ok(dots.length <= 16, `expected <=16 markers, got ${dots.length}`);
+  const bars = d.querySelectorAll('#chart-spend-body svg rect');
+  assert.ok(bars.length >= 1);
+  assert.ok(bars.length <= 16, `expected <=16 bars, got ${bars.length}`);
+  // Columns have no endpoint dots — the last bar is already "now".
+  assert.equal(d.querySelectorAll('#chart-spend-body svg circle').length, 0);
   const labels = [...d.querySelectorAll('#chart-spend-body .trend-chart-x span')];
   assert.ok(labels.length <= 4);
 });

@@ -823,11 +823,40 @@ input[readonly] {
 }
 
 .trend-chart-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   margin: 8px 0 0;
-  font-size: 0.72rem;
-  color: var(--text-dim);
   line-height: 1.35;
 }
+
+.trend-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.trend-chip-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.trend-chip-label {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* Soft cues only — chart stroke stays the focus */
+.trend-chip-high .trend-chip-value { color: var(--text); }
+.trend-chip-low .trend-chip-value { color: var(--text-dim); }
+.trend-chip-now .trend-chip-value { color: var(--text); }
+.trend-chip-up .trend-chip-value { color: var(--stat-miles); }
+.trend-chip-down .trend-chip-value { color: #e8a0a4; }
+.trend-chip-flat .trend-chip-value { color: var(--text-dim); }
 
 .entry-chevron {
   position: absolute;
