@@ -539,6 +539,16 @@ input[readonly] {
 .stat-mpg .stat-value { color: var(--stat-mpg); }
 .stat-price .stat-value { color: var(--stat-price); }
 
+/* Missing miles/MPG still occupy their slot so $/gal stays aligned. */
+.stat-empty .stat-value {
+  color: var(--text-dim);
+  font-weight: 500;
+  opacity: 0.55;
+}
+.stat-empty .stat-label {
+  opacity: 0.65;
+}
+
 .link-btn {
   background: none;
   border: none;

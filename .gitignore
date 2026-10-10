@@ -1,3 +1,6 @@
 .DS_Store
 .claude/settings.local.json
 node_modules/
+
+# Exploratory chart/UI demos — keep out of the app repo
+demo-*.html

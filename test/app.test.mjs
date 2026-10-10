@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.17.0', () => {
+test('boots without errors and shows v1.17.1', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.0/);
+  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.1/);
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,7 +69,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.17\.0/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.17\.1/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 1);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -372,7 +372,7 @@ test('Trends charts render with middots and change label', () => {
   assert.match(meta.textContent, /now/);
   assert.match(meta.textContent, /change/);
   assert.ok(d.querySelector('#chart-spend-body .trend-chart-x'));
-  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.0/);
+  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.1/);
 });
 
 test('chart date labels omit year unless the window spans years', () => {
@@ -622,6 +622,13 @@ test('long log starts fully collapsed; adding a fill-up reveals that month', asy
   assert.match(groups[0].querySelector('.month-count').textContent, /^1$/);
   assert.match(groups[0].querySelector('.month-summary').textContent, /\$/);
   assert.match(groups[0].querySelector('.month-summary').textContent, /mpg/);
+  // Oldest month is the first fill ever — miles/MPG unknown, but slots stay put.
+  const oldest = groups[groups.length - 1].querySelector('.month-summary');
+  assert.ok(oldest.querySelector('.stat-miles.stat-empty'));
+  assert.ok(oldest.querySelector('.stat-mpg.stat-empty'));
+  assert.equal(oldest.querySelector('.stat-miles .stat-value').textContent, '—');
+  assert.ok(oldest.querySelector('.stat-price'));
+  assert.ok(!oldest.querySelector('.stat-price.stat-empty'));
 
   const toggle = groups[0].querySelector('.month-toggle');
   toggle.click();

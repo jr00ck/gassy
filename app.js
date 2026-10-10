@@ -874,7 +874,9 @@ function formatFillCount(count) {
 }
 
 // Metrics only (count lives on the title row). Labels stay readable without color.
-function summaryMetrics(summary) {
+// `placeholders` keeps spend → miles → mpg → $/gal slots aligned when miles/MPG
+// aren't knowable yet (first fill-up, no prior odometer interval).
+function summaryMetrics(summary, { placeholders = false } = {}) {
   const metrics = [];
   metrics.push({ kind: 'spend', value: fmtMoney(summary.spend), label: 'spent' });
   if (summary.miles > 0) {
@@ -883,9 +885,13 @@ function summaryMetrics(summary) {
       value: `${Math.round(summary.miles).toLocaleString()} mi`,
       label: 'driven',
     });
+  } else if (placeholders) {
+    metrics.push({ kind: 'miles', value: '—', label: 'driven', empty: true });
   }
   if (summary.avgMpg != null) {
     metrics.push({ kind: 'mpg', value: summary.avgMpg.toFixed(1), label: 'mpg' });
+  } else if (placeholders) {
+    metrics.push({ kind: 'mpg', value: '—', label: 'mpg', empty: true });
   }
   if (summary.avgPpg != null) {
     metrics.push({ kind: 'price', value: fmtPricePerGallon(summary.avgPpg), label: '/gal' });
@@ -894,16 +900,22 @@ function summaryMetrics(summary) {
 }
 
 function summaryStatsHtml(summary) {
-  return summaryMetrics(summary).map((metric) => (
-    `<span class="stat stat-${metric.kind}">` +
-      `<span class="stat-value">${escapeHtml(metric.value)}</span>` +
-      `<span class="stat-label">${escapeHtml(metric.label)}</span>` +
-    `</span>`
-  )).join('');
+  return summaryMetrics(summary, { placeholders: true }).map((metric) => {
+    const emptyClass = metric.empty ? ' stat-empty' : '';
+    return (
+      `<span class="stat stat-${metric.kind}${emptyClass}">` +
+        `<span class="stat-value">${escapeHtml(metric.value)}</span>` +
+        `<span class="stat-label">${escapeHtml(metric.label)}</span>` +
+      `</span>`
+    );
+  }).join('');
 }
 
 function formatSummarySpoken(summary) {
-  return [formatFillCount(summary.count), ...summaryMetrics(summary).map((m) => `${m.value} ${m.label}`)];
+  const spoken = summaryMetrics(summary)
+    .filter((m) => !m.empty)
+    .map((m) => `${m.value} ${m.label}`);
+  return [formatFillCount(summary.count), ...spoken];
 }
 
 function isMonthOpen(key) {
@@ -1976,7 +1988,7 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.17.1';
 // Short build id while iterating on a PR — bump + mention in chat each push so
 // the footer can be matched to the update. Cleared to '' before tagging a
 // production release. Never shown on the live Pages host even if forgotten.
@@ -1985,8 +1997,7 @@ const PRODUCTION_HOST = 'jr00ck.github.io';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Trends use columns for fill-ups, spend, and miles; dots+line for MPG and $/gal',
-  'Week buckets (empty weeks as 0) unlock Fill-ups earlier; denser history rolls to months',
+  'Month and log summaries keep miles/MPG slots with a muted — when not calculable yet',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
