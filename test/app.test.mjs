@@ -43,10 +43,10 @@ function fill(w, d, { datetime, mileage, priceDigits, totalDigits, location }) {
   d.getElementById('mileage').dispatchEvent(new w.Event('input', { bubbles: true }));
 }
 
-test('boots without errors and shows v1.17.1', () => {
+test('boots without errors and shows v1.17.2', () => {
   const { d, errors } = boot();
   assert.equal(errors.length, 0, errors.join(' | '));
-  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.1/);
+  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.2/);
   assert.equal(d.getElementById('export-btn').disabled, true);
   assert.equal(d.getElementById('storage-usage').textContent, '26 B on device');
   assert.equal(d.getElementById('allow-landscape'), null);
@@ -69,7 +69,7 @@ test('Updated badge renders release notes as a bullet list', () => {
   badge.click();
   assert.equal(panel.hidden, false);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
-  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.17\.1/);
+  assert.match(panel.querySelector('.whats-new-title').textContent, /v1\.17\.2/);
   const items = [...panel.querySelectorAll('.whats-new-list li')].map((li) => li.textContent);
   assert.ok(items.length >= 1);
   assert.ok(items.every((t) => t.trim().length > 0));
@@ -372,7 +372,7 @@ test('Trends charts render with middots and change label', () => {
   assert.match(meta.textContent, /now/);
   assert.match(meta.textContent, /change/);
   assert.ok(d.querySelector('#chart-spend-body .trend-chart-x'));
-  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.1/);
+  assert.match(d.getElementById('app-version').textContent, /^v1\.17\.2/);
 });
 
 test('chart date labels omit year unless the window spans years', () => {
@@ -564,6 +564,121 @@ test('truly nearby stations still auto-fill the location field', async () => {
   await new Promise((r) => setTimeout(r, 40));
   assert.match(d.getElementById('location').value, /Corner Chevon/);
   assert.equal(d.getElementById('nearby-stations').hidden, true);
+});
+
+test('fuel pin on the canopy still names the station and keeps the GPS fix', async () => {
+  const { d, w } = boot();
+  // ~11 m north of the Costco Gasoline node. Default reverse geocode returns
+  // the canopy roof here; the POI layer returns the fuel pin.
+  const gpsLat = 33.4744216;
+  const gpsLon = -111.9862857;
+  w.navigator.geolocation = {
+    getCurrentPosition(success) {
+      success({ coords: { latitude: gpsLat, longitude: gpsLon } });
+    },
+  };
+  let overpassCalled = false;
+  w.fetch = (url) => {
+    const href = fetchUrl(url);
+    if (href.includes('nominatim')) {
+      assert.match(href, /layer=poi/);
+      return Promise.resolve(jsonResponse({
+        type: 'fuel',
+        lat: '33.4743216',
+        lon: '-111.9862857',
+        address: {
+          amenity: 'Costco Gasoline',
+          house_number: '4502',
+          road: 'East Oak Street',
+          city: 'Phoenix',
+          state: 'Arizona',
+        },
+      }));
+    }
+    if (href.includes('overpass')) overpassCalled = true;
+    return Promise.reject(new Error(`unexpected fetch: ${href}`));
+  };
+
+  d.getElementById('locate-btn').click();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.match(d.getElementById('location').value, /Costco Gasoline, Phoenix, AZ/);
+  assert.equal(d.getElementById('location').dataset.lat, String(gpsLat));
+  assert.equal(d.getElementById('location').dataset.lon, String(gpsLon));
+  assert.equal(overpassCalled, false);
+});
+
+test('a far fuel POI is not treated as the station you are standing at', async () => {
+  const { d, w } = boot();
+  w.navigator.geolocation = {
+    getCurrentPosition(success) {
+      success({ coords: { latitude: 37.7, longitude: -122.4 } });
+    },
+  };
+  w.fetch = (url) => {
+    const href = fetchUrl(url);
+    if (href.includes('nominatim')) {
+      return Promise.resolve(jsonResponse({
+        type: 'fuel',
+        lat: '37.71',
+        lon: '-122.4',
+        address: { amenity: 'Far Costco', city: 'Town', state: 'California' },
+      }));
+    }
+    if (href.includes('overpass')) {
+      return Promise.resolve(jsonResponse({ elements: [] }));
+    }
+    return Promise.reject(new Error(`unexpected fetch: ${href}`));
+  };
+
+  d.getElementById('locate-btn').click();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(d.getElementById('location').value, '');
+  assert.match(d.getElementById('location-status').textContent, /No gas station found nearby/i);
+});
+
+test('a logged station nearby is reused when the map lookup misses the canopy', async () => {
+  const { d, w } = boot((dom) => {
+    dom.window.localStorage.setItem('gassy.entries', JSON.stringify([
+      {
+        id: 'costco',
+        datetime: '2026-10-01T12:00',
+        mileage: 10000,
+        pricePerGallon: 3.499,
+        totalCost: 40,
+        location: 'Costco Gasoline, Phoenix, AZ',
+        lat: 33.4743216,
+        lon: -111.9862857,
+        source: 'gps',
+      },
+    ]));
+  });
+  const gpsLat = 33.4744216;
+  const gpsLon = -111.9862857;
+  w.navigator.geolocation = {
+    getCurrentPosition(success) {
+      success({ coords: { latitude: gpsLat, longitude: gpsLon } });
+    },
+  };
+  w.fetch = (url) => {
+    const href = fetchUrl(url);
+    if (href.includes('nominatim')) {
+      return Promise.resolve(jsonResponse({
+        type: 'roof',
+        lat: '33.4743309',
+        lon: '-111.9863147',
+        address: { road: 'North 44th Street', city: 'Phoenix', state: 'Arizona' },
+      }));
+    }
+    if (href.includes('overpass')) return Promise.reject(new Error('overpass down'));
+    return Promise.reject(new Error(`unexpected fetch: ${href}`));
+  };
+
+  d.getElementById('locate-btn').click();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(d.getElementById('location').value, 'Costco Gasoline, Phoenix, AZ');
+  assert.equal(d.getElementById('location').dataset.lat, String(gpsLat));
+  assert.equal(d.getElementById('location').dataset.lon, String(gpsLon));
+  assert.match(d.getElementById('location-status').textContent, /Current location/);
 });
 
 test('editing without saved GPS asks before replacing a typed location', async () => {

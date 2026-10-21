@@ -378,6 +378,39 @@ async function findNearbyFuelStations(lat, lon, radiusMeters) {
 const FUEL_SEARCH_RADIUS_M = 150;
 const FUEL_SEARCH_RADIUS_WIDE_M = 1000;
 
+// A fuel pin drawn on top of the canopy loses a normal reverse geocode to that
+// roof unless the fix is essentially the pin itself. Ask for the nearest point
+// of interest, and only trust it when it's a fuel station still within the
+// auto-fill radius — the nearest POI can otherwise be a parking lot or a
+// station several blocks away.
+function nominatimCloseFuel(data, lat, lon) {
+  if (!data || data.type !== 'fuel') return null;
+  const plat = parseFloat(data.lat);
+  const plon = parseFloat(data.lon);
+  if (!Number.isFinite(plat) || !Number.isFinite(plon)) return null;
+  if (distanceMeters(lat, lon, plat, plon) > FUEL_SEARCH_RADIUS_M) return null;
+  const name = ((data.address && data.address.amenity) || data.name || '').trim();
+  return name || null;
+}
+
+function looksLikeBareCoordinates(value) {
+  return /^-?\d+(?:\.\d+)?,\s*-?\d+(?:\.\d+)?$/.test(String(value).trim());
+}
+
+// A station logged here before is real even when the map lookup misses it
+// (canopy roof hiding the pin, or Overpass timing out).
+function closestLoggedStation(lat, lon) {
+  let best = null;
+  for (const entry of loadEntries()) {
+    if (entry.lat == null || entry.lon == null) continue;
+    const name = (entry.location || '').trim();
+    if (!name || looksLikeBareCoordinates(name)) continue;
+    const distance = distanceMeters(lat, lon, entry.lat, entry.lon);
+    if (!best || distance < best.distance) best = { location: name, distance };
+  }
+  return best;
+}
+
 async function findNearbyFuelStationsExpanding(lat, lon) {
   // One wide query, then split: close enough to auto-fill vs farther suggestions.
   const stations = await findNearbyFuelStations(lat, lon, FUEL_SEARCH_RADIUS_WIDE_M);
@@ -439,37 +472,49 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
   renderNearbyStations([]);
   missingDataNotice.hidden = true;
   missingDataNotice.innerHTML = '';
+  let cityState = '';
+  let street = '';
+  let nominatimOk = false;
   try {
-    const res = await fetchWithTimeout(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
-    );
-    if (stale()) return;
-    if (!res.ok) throw new Error('reverse geocode failed');
-    const data = await res.json();
-    if (stale()) return;
-    const a = data.address || {};
-    const city = a.city || a.town || a.village || a.hamlet || '';
-    const state = abbrState(a);
-    const cityState = [city, state].filter(Boolean).join(', ');
-    const street = [a.house_number, a.road].filter(Boolean).join(' ');
+    try {
+      const res = await fetchWithTimeout(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&layer=poi`
+      );
+      if (stale()) return;
+      if (res.ok) {
+        const data = await res.json();
+        if (stale()) return;
+        nominatimOk = true;
+        const a = data.address || {};
+        const city = a.city || a.town || a.village || a.hamlet || '';
+        const state = abbrState(a);
+        cityState = [city, state].filter(Boolean).join(', ');
+        street = [a.house_number, a.road].filter(Boolean).join(' ');
 
-    if (data.type === 'fuel') {
-      // Nominatim's own point already resolved to a fuel station — trust it
-      // immediately rather than spending a round-trip on Overpass to confirm
-      // what's already correct. (`address.amenity` holds the business NAME,
-      // not the tag type — the reliable signal is the top-level `type`.)
-      locationInput.value = [a.amenity, cityState].filter(Boolean).join(', ');
-      setLocationLine(foundLabel, street);
-      return;
+        const fuelName = nominatimCloseFuel(data, latitude, longitude);
+        if (fuelName) {
+          // (`address.amenity` holds the business NAME, not the tag type.)
+          // Keep the GPS fix — the POI point is only a few meters away, and
+          // swapping it in replaces the reading just taken at the pump.
+          locationInput.value = [fuelName, cityState].filter(Boolean).join(', ');
+          setLocationLine(foundLabel, street);
+          return;
+        }
+      }
+    } catch {
+      // Nominatim down or rate-limited — still try Overpass below.
+      if (stale()) return;
     }
 
     // Prefer a truly nearby fuel station over whatever non-fuel POI Nominatim
     // snapped to. Farther stations are offered as chips only — never auto-filled.
+    let stations = [];
     try {
-      const { stations, nearby, autoFill } = await findNearbyFuelStationsExpanding(latitude, longitude);
+      const found = await findNearbyFuelStationsExpanding(latitude, longitude);
       if (stale()) return;
-      if (autoFill) {
-        const best = nearby[0];
+      stations = found.stations;
+      if (found.autoFill) {
+        const best = found.nearby[0];
         locationInput.value = [best.name, cityState].filter(Boolean).join(', ');
         locationInput.dataset.lat = best.lat;
         locationInput.dataset.lon = best.lon;
@@ -483,29 +528,39 @@ async function reverseGeocode(latitude, longitude, foundLabel, offlineLabel) {
         if (stations.length > 1) renderNearbyStations(stations, cityState);
         return;
       }
-
-      // Nothing within the tight radius — leave the field empty (don't invent a
-      // road name or a distant station) and offer any wider matches as taps.
-      locationInput.value = '';
-      // Keep the live GPS point on the entry even when no station name stuck.
-      locationInput.dataset.lat = latitude;
-      locationInput.dataset.lon = longitude;
-      setLocationLine(
-        'No gas station found nearby',
-        stations.length ? 'Tap a suggestion below if one looks right' : ''
-      );
-      renderNearbyStations(stations, cityState);
-      return;
     } catch {
-      // Overpass unavailable — fall through to a coordinate/offline fallback.
+      // Overpass unavailable — a previously logged station can still name it.
       if (stale()) return;
     }
 
+    const remembered = closestLoggedStation(latitude, longitude);
+    if (remembered && remembered.distance <= FUEL_SEARCH_RADIUS_M) {
+      locationInput.value = remembered.location;
+      locationInput.dataset.lat = latitude;
+      locationInput.dataset.lon = longitude;
+      setLocationLine(foundLabel, street);
+      renderNearbyStations(stations, cityState);
+      return;
+    }
+
+    if (!nominatimOk && stations.length === 0) {
+      locationInput.value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      setLocationLine(offlineLabel, '');
+      renderNearbyStations([]);
+      return;
+    }
+
+    // Nothing within the tight radius — leave the field empty (don't invent a
+    // road name or a distant station) and offer any wider matches as taps.
     locationInput.value = '';
+    // Keep the live GPS point on the entry even when no station name stuck.
     locationInput.dataset.lat = latitude;
     locationInput.dataset.lon = longitude;
-    setLocationLine('No gas station found nearby', '');
-    renderNearbyStations([]);
+    setLocationLine(
+      'No gas station found nearby',
+      stations.length ? 'Tap a suggestion below if one looks right' : ''
+    );
+    renderNearbyStations(stations, cityState);
   } catch {
     if (stale()) return;
     locationInput.value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
@@ -1988,7 +2043,7 @@ render();
 
 // --- Version badge: shows briefly after an update was just applied ---
 
-const APP_VERSION = '1.17.1';
+const APP_VERSION = '1.17.2';
 // Short build id while iterating on a PR — bump + mention in chat each push so
 // the footer can be matched to the update. Cleared to '' before tagging a
 // production release. Never shown on the live Pages host even if forgotten.
@@ -1997,7 +2052,7 @@ const PRODUCTION_HOST = 'jr00ck.github.io';
 // Short human bullets for the in-app "✓ Updated" panel (not a full commit dump).
 // Keep CHANGELOG.md in sync via `npm run changelog` (git-cliff + conventional commits).
 const RELEASE_NOTES = [
-  'Month and log summaries keep miles/MPG slots with a muted — when not calculable yet',
+  'Find a gas station when its map pin sits on the canopy, and reuse one you already logged nearby',
 ];
 const LAST_SEEN_KEY = 'gassy.lastSeenVersion';
 
