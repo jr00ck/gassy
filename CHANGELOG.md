@@ -4,6 +4,11 @@ All notable changes to Gassy are listed here.
 Generated with [git-cliff](https://git-cliff.org); keep commits conventional when you can.
 
 <!-- git-cliff: end of header -->
+## [1.17.2] - 2026-10-21
+
+### Bug Fixes
+
+- Find stations when the map pin sits on the canopy
 ## [1.17.1] - 2026-10-10
 
 ### Bug Fixes
